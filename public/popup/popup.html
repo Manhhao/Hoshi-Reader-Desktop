@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      :root { color-scheme: light dark; }
+      html, body { --popup-scale: 1; background: transparent; }
+      html { scrollbar-color: rgba(0, 0, 0, 0.3) transparent; scrollbar-width: thin; }
+      ::selection {
+        background-color: rgba(160, 160, 160, 0.4) !important;
+        color: inherit;
+      }
+      summary, .deinflection-tag, .frequency-toggle { cursor: pointer; }
+      .button-slot {
+        cursor: pointer;
+        display: inline-block;
+        position: relative;
+        opacity: 0.6;
+        -webkit-user-select: none;
+      }
+      .button-slot::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-color: currentColor;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        -webkit-mask-size: calc(17px * var(--popup-scale));
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: calc(17px * var(--popup-scale));
+      }
+      .button-slot:hover { opacity: 1; }
+      .button-slot[hidden] { display: none; }
+      .button-slot[data-enabled="false"] { opacity: 0.25; pointer-events: none; }
+      .button-slot[data-kind="mine"]::after {
+        -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8m-4-4v8"/></svg>');
+        mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8m-4-4v8"/></svg>');
+      }
+      .button-slot[data-kind="mine"][data-state="duplicate"]::after {
+        -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12v6m-3-3h6"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>');
+        mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12v6m-3-3h6"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>');
+      }
+      .button-slot[data-kind="note"]::after {
+        -webkit-mask-size: calc(11px * var(--popup-scale));
+        mask-size: calc(11px * var(--popup-scale));
+        -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>');
+        mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>');
+      }
+      .button-slot[data-kind="audio"]::after {
+        -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM16 9a5 5 0 0 1 0 6m3.364 3.364a9 9 0 0 0 0-12.728"/></svg>');
+        mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM16 9a5 5 0 0 1 0 6m3.364 3.364a9 9 0 0 0 0-12.728"/></svg>');
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+      }
+      #search-text {
+        display: none;
+        padding: calc(8px * var(--popup-scale)) 0 calc(7px * var(--popup-scale));
+        border-bottom: calc(1px * var(--popup-scale)) solid rgba(128, 128, 128, 0.4);
+        font-size: calc(var(--search-text-size, 22px) * var(--popup-scale));
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        -webkit-user-select: none;
+        user-select: none;
+        cursor: default;
+        color: var(--text-color);
+      }
+      #search-text.visible { display: block; }
+      #search-text > span.matched { background-color: rgba(160, 160, 160, 0.4); }
+      #entries-container {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0 calc(8px * var(--popup-scale));
+        overscroll-behavior-y: contain;
+      }
+      .action-bar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: calc(24px * var(--popup-scale));
+        padding: calc(7px * var(--popup-scale)) calc(16px * var(--popup-scale));
+        background: transparent;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+        color: var(--text-color);
+      }
+      .action-bar button {
+        all: unset;
+        display: flex;
+        cursor: pointer;
+        opacity: 0.55;
+      }
+      .action-bar[hidden] { display: none; }
+      .action-bar button[hidden] { display: none; }
+      .action-bar button:hover { opacity: 1; }
+      .action-bar button[disabled] { opacity: 0.2; pointer-events: none; }
+      .action-bar .spacer { flex: 1; }
+      .action-bar svg {
+        width: calc(13px * var(--popup-scale));
+        height: calc(13px * var(--popup-scale));
+      }
+      .button-slot[data-kind="audio"][data-state="error"]::after {
+        -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM22 9l-6 6m0-6l6 6"/></svg>');
+        mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM22 9l-6 6m0-6l6 6"/></svg>');
+      }
+    </style>
+    <script>
+      window.scanNonJapaneseText = true;
+      window.scanLength = 16;
+      window.collapseMode = "Expand All";
+      window.expandFirstDictionary = false;
+      window.collapsedDictionaries = [];
+      window.twoColumnLayout = false;
+      window.compactGlossaries = true;
+      window.showExpressionTags = false;
+      window.harmonicFrequency = false;
+      window.deduplicatePitchAccents = false;
+      window.compactPitchAccents = true;
+      window.audioSources = [];
+      window.audioEnableAutoplay = false;
+      window.needsAudio = false;
+      window.allowDupes = false;
+      window.useAnkiConnect = true;
+      window.isAnkiConnectReachable = false;
+      window.cardFormatCount = 0;
+      window.validFormatFlags = [];
+      window.disableShowNotes = false;
+      window.excludedDictionaries = [];
+      window.embedMedia = false;
+      window.compactGlossariesAnki = false;
+      window.customCSS = "";
+      window.swipeThreshold = 0;
+
+      let currentWordAudio = null;
+      let bridgeSeq = 0;
+      const pendingReplies = {};
+      function bridgeCall(channel, payload) {
+        return new Promise((resolve) => {
+          const id = ++bridgeSeq;
+          pendingReplies[id] = resolve;
+          parent.postMessage({ hoshi: channel, id, ...payload }, "*");
+        });
+      }
+      function redirectLookup(query) {
+        return bridgeCall("popup-redirect", { query });
+      }
+
+      window.popupActionBar = false;
+      window.popupShowClose = true;
+
+      let searchTextEl = null;
+      let backCount = 0;
+      let forwardCount = 0;
+      function refreshNav() {
+        const bar = document.querySelector(".action-bar");
+        if (bar) bar.hidden = !(window.popupActionBar || backCount > 0 || forwardCount > 0);
+        const back = document.getElementById("nav-back");
+        const forward = document.getElementById("nav-forward");
+        if (back) back.disabled = backCount === 0;
+        if (forward) forward.disabled = forwardCount === 0;
+        const close = document.getElementById("popup-close");
+        if (close) close.hidden = !window.popupShowClose;
+      }
+      function goBack() {
+        if (!backCount) return;
+        backCount--;
+        forwardCount++;
+        window.navigateBack();
+        refreshNav();
+      }
+      function goForward() {
+        if (!forwardCount) return;
+        forwardCount--;
+        backCount++;
+        window.navigateForward();
+        refreshNav();
+      }
+      async function redirectWithHistory(query) {
+        const count = await redirectLookup(query);
+        if (count > 0) {
+          backCount++;
+          forwardCount = 0;
+          refreshNav();
+        }
+        return count;
+      }
+      async function kanjiRedirectWithHistory(character) {
+        const data = await bridgeCall("popup-kanji", { character });
+        if (data) {
+          await document.fonts.load('120px "KanjiStrokeOrders_v4.005"', character).catch(() => {});
+          backCount++;
+          forwardCount = 0;
+          refreshNav();
+        }
+        return data;
+      }
+
+      window.webkit = {
+        messageHandlers: {
+          getEntries: {
+            postMessage: ({ start, count }) =>
+              Promise.resolve(window.__entries.slice(start, start + count)),
+          },
+          duplicateCheck: { postMessage: (fields) => bridgeCall("dupecheck", { fields }) },
+          mineEntry: { postMessage: (content) => bridgeCall("mine", { content }) },
+          showNotes: { postMessage: (fields) => parent.postMessage({ hoshi: "show-notes", fields }, "*") },
+          lookupRedirect: { postMessage: (query) => redirectWithHistory(query) },
+          kanjiRedirect: { postMessage: (character) => kanjiRedirectWithHistory(character) },
+          textSelected: { postMessage: (d) => parent.postMessage({ hoshi: "popup-selected", ...d }, "*") },
+          tapOutside: { postMessage: () => {} },
+          openLink: { postMessage: (url) => parent.postMessage({ hoshi: "open-link", url }, "*") },
+          buttonRects: { postMessage: () => {} },
+          playWordAudio: {
+            postMessage: ({ url }) => {
+              if (currentWordAudio) currentWordAudio.pause();
+              currentWordAudio = new Audio(url);
+              currentWordAudio.play();
+            },
+          },
+          swipeDismiss: { postMessage: () => {} },
+          selectionState: { postMessage: () => {} },
+        },
+      };
+
+      const lucideStroke =
+        'fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+      const mineIconSvgs = {
+        "plus-square": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${lucideStroke}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8m-4-4v8"/></svg>`,
+        "plus-circle": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${lucideStroke}><circle cx="12" cy="12" r="10"/><path d="M8 12h8m-4-4v8"/></svg>`,
+        "plus-diamond": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${lucideStroke}><path d="M12 8v8m-9.3-5.7a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0zM8 12h8"/></svg>`,
+      };
+      const mineDuplicateIconSvgs = {
+        "plus-square": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${lucideStroke}><path d="M15 12v6m-3-3h6"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
+        "plus-circle": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><mask id="m"><circle cx="12" cy="12" r="11" fill="white"/><path d="M8 12h8M12 8v8" stroke="black" stroke-width="2" stroke-linecap="round"/></mask><rect width="24" height="24" fill="black" mask="url(%23m)"/></svg>`,
+        "plus-diamond": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><mask id="m"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z" fill="white" stroke="white" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="black" stroke-width="2" stroke-linecap="round"/></mask><rect width="24" height="24" fill="black" mask="url(%23m)"/></svg>`,
+      };
+
+      function applyMineIcons(icons) {
+        let style = document.getElementById("mine-icon-style");
+        if (!style) {
+          style = document.createElement("style");
+          style.id = "mine-icon-style";
+          document.head.appendChild(style);
+        }
+        style.textContent = icons
+          .map((name, i) => {
+            const base = name.replace(/-small$/, "");
+            const size = name.endsWith("-small") ? 13 : 17;
+            const rule = (state, svg) => {
+              const url = `url('data:image/svg+xml;utf8,${svg}')`;
+              return `.button-slot[data-kind="mine"][data-slot-index="${i}"]${state}::after {
+                -webkit-mask-image: ${url};
+                mask-image: ${url};
+                -webkit-mask-size: calc(${size}px * var(--popup-scale));
+                mask-size: calc(${size}px * var(--popup-scale));
+              }`;
+            };
+            return [
+              rule(':not([data-state="duplicate"])', mineIconSvgs[base] || mineIconSvgs["plus-square"]),
+              rule('[data-state="duplicate"]', mineDuplicateIconSvgs[base] || mineDuplicateIconSvgs["plus-square"]),
+            ].join("\n");
+          })
+          .join("\n");
+      }
+
+      function applyAnkiConfig(anki) {
+        if (!anki) return;
+        applyMineIcons(anki.cardFormatIcons);
+        window.useAnkiConnect = anki.useAnkiConnect;
+        window.isAnkiConnectReachable = anki.isAnkiConnectReachable;
+        window.allowDupes = anki.allowDupes;
+        window.disableShowNotes = anki.disableShowNotes;
+        window.compactGlossariesAnki = anki.compactGlossariesAnki;
+        window.cardFormatCount = anki.cardFormatCount;
+        window.validFormatFlags = anki.validFormatFlags;
+        window.excludedDictionaries = anki.excludedDictionaries;
+        window.needsAudio = anki.needsAudio;
+        window.audioSources = anki.audioSources;
+        window.audioEnableAutoplay = anki.audioEnableAutoplay;
+      }
+
+      function applyDictConfig(dict) {
+        window.scanNonJapaneseText = dict.scanNonJapaneseText;
+        window.scanLength = dict.scanLength;
+        window.collapseMode = dict.collapseMode;
+        window.expandFirstDictionary = dict.expandFirstDictionary;
+        window.collapsedDictionaries = dict.collapsedDictionaries;
+        window.twoColumnLayout = dict.twoColumnLayout;
+        window.compactGlossaries = dict.compactGlossaries;
+        window.showExpressionTags = dict.showExpressionTags;
+        window.harmonicFrequency = dict.harmonicFrequency;
+        window.deduplicatePitchAccents = dict.deduplicatePitchAccents;
+        window.compactPitchAccents = dict.compactPitchAccents;
+        window.customCSS = dict.customCSS;
+      }
+
+      let popupFontStyle = null;
+      function applyPopupFonts(fonts) {
+        popupFontStyle?.remove();
+        popupFontStyle = null;
+        const rules = fonts
+          .map(
+            (font) =>
+              `@font-face { font-family: ${JSON.stringify(font.name)}; src: url(${JSON.stringify(font.url)}); }`,
+          )
+          .join("\n");
+        if (!rules) return;
+        popupFontStyle = document.createElement("style");
+        popupFontStyle.textContent = rules;
+        document.head.appendChild(popupFontStyle);
+      }
+
+      function applyPopupConfig(popup) {
+        applyPopupFonts(popup.fonts);
+        document.documentElement.style.setProperty("--popup-scale", popup.scale);
+        document.body?.style.setProperty("--popup-scale", popup.scale);
+        window.popupActionBar = popup.actionBar;
+        window.popupShowClose = popup.showClose !== false;
+        window.popupScanModifier = popup.scanModifier;
+        window.popupClickLookup = popup.clickLookup !== false;
+        readerHotkeys = popup.readerHotkeys;
+        refreshNav();
+      }
+
+      let scanKeyHeld = false;
+      let readerHotkeys = [];
+
+      function isScanKey(key) {
+        const mod = window.popupScanModifier ?? "Shift";
+        return (key.length === 1 ? key.toLowerCase() : key) === mod;
+      }
+
+      function scanModifierHeld(e) {
+        const mod = window.popupScanModifier ?? "Shift";
+        if (mod === "Shift") return e.shiftKey;
+        if (mod === "Control") return e.ctrlKey;
+        if (mod === "Alt") return e.altKey;
+        if (mod === "Meta") return e.metaKey;
+        return scanKeyHeld;
+      }
+
+      function showEntries(entries, styles, anki, dict, popup) {
+        applyAnkiConfig(anki);
+        applyDictConfig(dict);
+        applyPopupConfig(popup);
+        window.dictionaryStyles = styles;
+        window.__entries = entries;
+        window.lookupEntries = undefined;
+        window.entryCount = window.__entries.length;
+        if (currentWordAudio) currentWordAudio.pause();
+        audioUrls = {};
+        selectedDictionaries = {};
+        backStack.length = 0;
+        forwardStack.length = 0;
+        backCount = 0;
+        forwardCount = 0;
+        refreshNav();
+        const container = document.getElementById("entries-container");
+        if (container) container.innerHTML = "";
+        searchTextEl
+          ?.querySelectorAll("span.matched")
+          .forEach((span) => span.classList.remove("matched"));
+        ensureSearchText();
+        if (window.entryCount) window.renderPopup();
+      }
+
+      function ensureSearchText() {
+        if (!searchTextEl || !searchTextEl.classList.contains("visible")) return;
+        const container = document.getElementById("entries-container");
+        if (container && container.firstChild !== searchTextEl) container.prepend(searchTextEl);
+      }
+
+      function applySearchText(text, size) {
+        if (!searchTextEl) return;
+        if (typeof size === "number") {
+          document.documentElement.style.setProperty("--search-text-size", size + "px");
+        }
+        searchTextEl.innerHTML = "";
+        searchTextEl.classList.remove("visible");
+        const chars = [...(text || "")];
+        if (!chars.length) return;
+        searchTextEl.append(
+          ...chars.map((char, index) => {
+            const span = document.createElement("span");
+            span.textContent = char;
+            span.dataset.index = index;
+            return span;
+          }),
+        );
+        searchTextEl.classList.add("visible");
+        ensureSearchText();
+      }
+
+      async function searchTextRedirect(start) {
+        const spans = [...searchTextEl.children];
+        const count = await webkit.messageHandlers.lookupRedirect.postMessage(
+          spans.slice(start).map((span) => span.textContent).join(""),
+        );
+        if (!count) return;
+        const [entry] = await webkit.messageHandlers.getEntries.postMessage({ start: 0, count: 1 });
+        redirect(count, document.getElementById("entries-container").scrollTop);
+        const length = [...entry.matched].length;
+        spans.forEach((span, i) => {
+          span.classList.toggle("matched", i >= start && i < start + length);
+        });
+      }
+
+      let acked = false;
+      function announce() {
+        if (acked) return;
+        parent.postMessage({ hoshi: "popup-ready" }, "*");
+        setTimeout(announce, 50);
+      }
+
+      window.addEventListener("message", (e) => {
+        const m = e.data;
+        if (m?.hoshi === "ack") {
+          acked = true;
+        } else if (m?.hoshi === "popup-config") {
+          applyPopupConfig(m.popup);
+        } else if (m?.hoshi === "show") {
+          showEntries(m.entries, m.styles, m.anki, m.dict, m.popup);
+        } else if (m?.hoshi === "search-text") {
+          applySearchText(m.text, m.size);
+        } else if (m?.hoshi === "redirect-result") {
+          window.__entries = m.entries;
+          window.dictionaryStyles = m.styles;
+          const resolve = pendingReplies[m.id];
+          delete pendingReplies[m.id];
+          if (resolve) resolve(m.count);
+        } else if (
+          m?.hoshi === "mine-result" ||
+          m?.hoshi === "dupecheck-result" ||
+          m?.hoshi === "kanji-result"
+        ) {
+          const resolve = pendingReplies[m.id];
+          delete pendingReplies[m.id];
+          if (resolve) resolve(m.result);
+        } else if (m?.hoshi === "play-audio") {
+          playEntryAudio(m.entryIndex, m.sourceIndex);
+        } else if (m?.hoshi === "highlight") {
+          window.hoshiSelection?.highlightSelection(m.count);
+        } else if (m?.hoshi === "clear-selection") {
+          window.hoshiSelection?.clearSelection();
+        }
+      });
+
+      document.addEventListener("mousedown", (e) => {
+        if (e.target.closest?.(".button-slot")) e.preventDefault();
+      });
+
+      document.addEventListener("click", (e) => {
+        const slot = e.target.closest?.(".button-slot");
+        if (!slot || slot.dataset.enabled === "false") return;
+        const entryIndex = Number(slot.dataset.entryIndex);
+        const slotIndex = Number(slot.dataset.slotIndex);
+        if (slot.dataset.kind === "audio") playEntryAudio(entryIndex);
+        else if (slot.dataset.kind === "note") showNotesAtIndex(entryIndex, slotIndex);
+        else mineEntryAtIndex(entryIndex, slotIndex);
+      });
+
+      let lastPopupMouse = null;
+      let popupMouseButtons = 0;
+      let scannedSearchTextIndex = null;
+
+      function scanAt(x, y, target) {
+        const span = target?.closest?.("#search-text > span");
+        if (!span) {
+          scannedSearchTextIndex = null;
+          window.hoshiSelection?.selectText(x, y, window.scanLength, true);
+          return;
+        }
+        if (span.dataset.index === scannedSearchTextIndex) return;
+        scannedSearchTextIndex = span.dataset.index;
+        searchTextRedirect(Number(span.dataset.index));
+      }
+
+      document.addEventListener(
+        "mousemove",
+        (e) => {
+          popupMouseButtons = e.buttons;
+          lastPopupMouse = { x: e.clientX, y: e.clientY, target: e.target };
+          if (e.buttons || !scanModifierHeld(e)) return;
+          scanAt(e.clientX, e.clientY, e.target);
+        },
+        true,
+      );
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          if (!isScanKey(e.key)) return;
+          scanKeyHeld = true;
+          if (e.repeat || !lastPopupMouse || popupMouseButtons) return;
+          scanAt(lastPopupMouse.x, lastPopupMouse.y, lastPopupMouse.target);
+        },
+        true,
+      );
+      document.addEventListener(
+        "mouseup",
+        (e) => {
+          popupMouseButtons = e.buttons;
+        },
+        true,
+      );
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          parent.postMessage({ hoshi: "popup-close" }, "*");
+          return;
+        }
+        if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey || e.target.closest("input, textarea, select, [contenteditable]")) return;
+        const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        const control = e.target.closest("button, a, [role='button'], summary");
+        if (!readerHotkeys.includes(key) || (control && [" ", "Enter", "Tab"].includes(e.key))) return;
+        e.preventDefault();
+        if (!e.repeat) parent.postMessage({ hoshi: "reader-hotkey", key }, "*");
+      });
+      document.addEventListener(
+        "keyup",
+        (e) => {
+          if (!isScanKey(e.key)) return;
+          scanKeyHeld = false;
+          scannedSearchTextIndex = null;
+        },
+        true,
+      );
+      window.addEventListener("blur", () => {
+        scanKeyHeld = false;
+        popupMouseButtons = 0;
+        scannedSearchTextIndex = null;
+      });
+      document.documentElement.addEventListener("mouseleave", () => {
+        lastPopupMouse = null;
+        scannedSearchTextIndex = null;
+      });
+      document.addEventListener(
+        "mousedown",
+        (e) => {
+          popupMouseButtons = e.buttons;
+          if (e.button === 3 || e.button === 4) {
+            e.preventDefault();
+            if (e.button === 3) goBack();
+            else goForward();
+            return;
+          }
+          if (e.button === 0 && !e.target.closest?.(".button-slot")) {
+            window.hoshiSelection?.clearSelection();
+          }
+          parent.postMessage({ hoshi: "popup-press" }, "*");
+        },
+        true,
+      );
+      document.addEventListener("auxclick", (e) => {
+        if (e.button === 3 || e.button === 4) e.preventDefault();
+      });
+
+      let swipeDeltaX = 0;
+      let swipeIdleTimer = 0;
+      let swipeLocked = false;
+      document.addEventListener(
+        "wheel",
+        (e) => {
+          if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+          clearTimeout(swipeIdleTimer);
+          swipeIdleTimer = setTimeout(() => {
+            swipeDeltaX = 0;
+            swipeLocked = false;
+          }, 200);
+          if (swipeLocked) return;
+          swipeDeltaX += e.deltaX;
+          if (Math.abs(swipeDeltaX) < 90) return;
+          const back = swipeDeltaX < 0;
+          swipeDeltaX = 0;
+          swipeLocked = true;
+          if (back) goBack();
+          else goForward();
+        },
+        { passive: true, capture: true },
+      );
+      document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      document.addEventListener("contextmenu", async (e) => {
+        const slot = e.target.closest?.('.button-slot[data-kind="audio"]');
+        if (!slot) return;
+        const entryIndex = Number(slot.dataset.entryIndex);
+        const menu = await getAudioMenu(entryIndex);
+        if (!menu.names.length) return;
+        parent.postMessage(
+          { hoshi: "audio-menu", entryIndex, names: menu.names, selected: menu.selected },
+          "*",
+        );
+      });
+    </script>
+    <script src="popup.js"></script>
+  </head>
+  <body>
+    <div class="action-bar" hidden>
+      <button id="nav-back" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+      </button>
+      <button id="nav-forward" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+      </button>
+      <span class="spacer"></span>
+      <button id="popup-close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
+    </div>
+    <div id="entries-container">
+      <div id="search-text"></div>
+    </div>
+    <div class="overlay">
+      <div class="overlay-close" onclick="closeOverlay()">×</div>
+      <div class="overlay-content"></div>
+    </div>
+    <script>
+      document.getElementById("nav-back").addEventListener("click", goBack);
+      document.getElementById("nav-forward").addEventListener("click", goForward);
+      document.getElementById("popup-close").addEventListener("click", () => {
+        parent.postMessage({ hoshi: "popup-close" }, "*");
+      });
+      searchTextEl = document.getElementById("search-text");
+      searchTextEl.addEventListener("click", (e) => {
+        const index = e.target.dataset?.index;
+        if (index !== undefined) searchTextRedirect(Number(index));
+      });
+      new MutationObserver(ensureSearchText).observe(
+        document.getElementById("entries-container"),
+        { childList: true },
+      );
+      announce();
+
+      const selectionScript = document.createElement("script");
+      selectionScript.src = hoshiSchemeUrl("book", "__hoshi/selection.js");
+      document.head.appendChild(selectionScript);
+    </script>
+  </body>
+</html>

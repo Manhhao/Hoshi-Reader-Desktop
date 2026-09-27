@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: false;
+}
+@plugin "daisyui/theme" {
+  name: "hoshi-light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(96.5% 0.005 255.44);
+  --color-base-300: oklch(91.5% 0.011 255.44);
+  --color-base-content: oklch(27% 0.028 255.44);
+  --color-primary: oklch(73.52% 0.1072 255.44);
+  --color-primary-content: oklch(22% 0.036 255.44);
+  --color-secondary: oklch(58% 0.09 255.44);
+  --color-secondary-content: oklch(98% 0.005 255.44);
+  --color-accent: oklch(73.52% 0.1072 255.44);
+  --color-accent-content: oklch(22% 0.036 255.44);
+  --color-neutral: oklch(38% 0.065 255.44);
+  --color-neutral-content: oklch(97% 0.008 255.44);
+  --color-info: oklch(73.52% 0.1072 255.44);
+  --color-info-content: oklch(22% 0.036 255.44);
+  --color-success: oklch(70% 0.13 155);
+  --color-success-content: oklch(22% 0.03 155);
+  --color-warning: oklch(82% 0.14 80);
+  --color-warning-content: oklch(25% 0.04 80);
+  --color-error: oklch(63% 0.2 25);
+  --color-error-content: oklch(98% 0.01 25);
+  --radius-selector: 2rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+@plugin "daisyui/theme" {
+  name: "hoshi-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: oklch(23% 0.012 255.44);
+  --color-base-200: oklch(28% 0.014 255.44);
+  --color-base-300: oklch(33% 0.016 255.44);
+  --color-base-content: oklch(93% 0.008 255.44);
+  --color-primary: oklch(73.52% 0.1072 255.44);
+  --color-primary-content: oklch(20% 0.035 255.44);
+  --color-secondary: oklch(62% 0.09 255.44);
+  --color-secondary-content: oklch(97% 0.008 255.44);
+  --color-accent: oklch(73.52% 0.1072 255.44);
+  --color-accent-content: oklch(20% 0.035 255.44);
+  --color-neutral: oklch(42% 0.06 255.44);
+  --color-neutral-content: oklch(97% 0.008 255.44);
+  --color-info: oklch(73.52% 0.1072 255.44);
+  --color-info-content: oklch(20% 0.035 255.44);
+  --color-success: oklch(72% 0.13 155);
+  --color-success-content: oklch(20% 0.03 155);
+  --color-warning: oklch(84% 0.14 80);
+  --color-warning-content: oklch(24% 0.04 80);
+  --color-error: oklch(66% 0.2 25);
+  --color-error-content: oklch(98% 0.01 25);
+  --radius-selector: 2rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
+    "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+:focus,
+:focus-visible,
+:focus-within {
+  outline-style: none;
+}
+
+:open {
+  outline-style: none;
+}
+
+.select:not(:open) {
+  --input-color: color-mix(in oklab, var(--color-base-content) 20%, #0000);
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}
+
+html.dragging,
+html.dragging * {
+  cursor: grabbing !important;
+}
+
+.statistics-bar {
+  transform-origin: bottom;
+  animation: statistics-bar-rise 350ms ease-out;
+  transition: height 350ms ease-out, background-color 150ms;
+}
+
+.statistics-gauge {
+  animation: statistics-gauge-fill 350ms ease-out;
+  transition: stroke-dashoffset 350ms ease-out;
+}
+
+@keyframes statistics-bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes statistics-gauge-fill {
+  from {
+    stroke-dashoffset: 100;
+  }
+}
