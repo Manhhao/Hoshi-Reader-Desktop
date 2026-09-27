@@ -330,6 +330,14 @@ fn title_from_epub(epub: &Epub, epub_name: &str) -> String {
         })
 }
 
+fn author_from_epub(epub: &Epub) -> Option<String> {
+    epub.metadata()
+        .creators()
+        .next()
+        .map(|creator| creator.value().trim().to_string())
+        .filter(|author| !author.is_empty())
+}
+
 static RE_FILE_NAME_SEPARATORS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"[\\/:*?"<>|\p{Cc}\p{Cf}\u{2028}\u{2029}]"#).unwrap());
 
@@ -639,12 +647,7 @@ pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String>
         .to_string_lossy()
         .into_owned();
     let title = title_from_epub(&epub, &source_name);
-    let author = epub
-        .metadata()
-        .creators()
-        .next()
-        .map(|creator| creator.value().trim().to_string())
-        .filter(|author| !author.is_empty());
+    let author = author_from_epub(&epub);
 
     let folder = sanitize_file_name(&title);
     let root = books_dir(&app);
@@ -804,6 +807,25 @@ pub fn rename_book(app: AppHandle, id: String, title: String) {
     };
     let mut meta = load_metadata_at(&dir).unwrap();
     meta.renamed_title = (!title.is_empty()).then_some(title);
+    meta.modified = Some(now_ms());
+    save_metadata(&meta, &dir).ok();
+    crate::sync::storage::shared()
+        .handle_book_change(&meta.folder)
+        .ok();
+}
+
+#[tauri::command]
+pub fn epub_author(app: AppHandle, id: String) -> Option<String> {
+    author_from_epub(&Epub::open(book_epub_path(&app, &id)?).ok()?)
+}
+
+#[tauri::command]
+pub fn set_book_author(app: AppHandle, id: String, author: String) {
+    let Some(dir) = book_dir(&app, &id) else {
+        return;
+    };
+    let mut meta = load_metadata_at(&dir).unwrap();
+    meta.author = (!author.is_empty()).then_some(author);
     meta.modified = Some(now_ms());
     save_metadata(&meta, &dir).ok();
     crate::sync::storage::shared()

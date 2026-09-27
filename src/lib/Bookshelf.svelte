@@ -45,6 +45,7 @@
     onDelete,
     onDeleteLocal,
     onRename,
+    onEditAuthor,
     onReload,
     onStatistics,
   }: {
@@ -56,6 +57,7 @@
     onDelete: (id: string) => Promise<void>;
     onDeleteLocal: (id: string) => Promise<void>;
     onRename: (id: string, title: string) => void;
+    onEditAuthor: (id: string, author: string) => void;
     onReload: () => Promise<void>;
     onStatistics: () => void;
   } = $props();
@@ -299,6 +301,21 @@
     renameDialog?.close();
   }
 
+  let authorDialog = $state<HTMLDialogElement>();
+  let authorId = $state<string | null>(null);
+  let authorText = $state("");
+
+  async function openEditAuthor(book: BookMetadata) {
+    authorId = book.id;
+    authorText = book.author ?? (await invoke<string | null>("epub_author", { id: book.id })) ?? "";
+    authorDialog?.showModal();
+  }
+
+  function saveAuthor() {
+    if (authorId) onEditAuthor(authorId, authorText.trim());
+    authorDialog?.close();
+  }
+
   let isSyncing = $state(false);
   let toast = $state<ReturnType<typeof Toast>>();
 
@@ -324,6 +341,7 @@
       await Submenu.new({ text: "Move to", items: moveItems([book.id]) }),
       await Submenu.new({ text: "Mark", items: await markItems([book]) }),
       { id: `rename-${book.id}`, text: "Rename", action: () => openRename(book) },
+      { id: `author-${book.id}`, text: "Edit Author", action: () => openEditAuthor(book) },
       { id: `delete-${book.id}`, text: "Delete", action: () => deleteBook(book) },
     ]);
   }
@@ -586,6 +604,29 @@
           <button class="btn btn-sm">Cancel</button>
         </form>
         <button class="btn btn-neutral btn-sm" onclick={saveRename}>Save</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" bind:this={authorDialog}>
+    <div class="modal-box">
+      <h3 class="mb-4 text-base font-semibold">Edit Author</h3>
+      <input
+        class="input w-full"
+        placeholder="Author"
+        bind:value={authorText}
+        onkeydown={(e) => {
+          if (e.key === "Enter") saveAuthor();
+        }}
+      />
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn btn-sm">Cancel</button>
+        </form>
+        <button class="btn btn-neutral btn-sm" onclick={saveAuthor}>Save</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop">

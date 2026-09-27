@@ -98,6 +98,8 @@ pub fn run() {
             library::list_books,
             library::delete_book,
             library::rename_book,
+            library::epub_author,
+            library::set_book_author,
             library::load_book_info,
             search::search_book,
             highlights::load_highlights,

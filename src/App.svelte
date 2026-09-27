@@ -157,6 +157,11 @@
     await refresh();
   }
 
+  async function editBookAuthor(id: string, author: string) {
+    await invoke("set_book_author", { id, author });
+    await refresh();
+  }
+
   $effect(() => {
     const unlisten = [
       listen("hoshi://hidden", () => {
@@ -291,6 +296,7 @@
           onDelete={deleteBook}
           onDeleteLocal={deleteLocalBook}
           onRename={renameBook}
+          onEditAuthor={editBookAuthor}
           onReload={refresh}
           onStatistics={() => (view = "statistics")}
         />
