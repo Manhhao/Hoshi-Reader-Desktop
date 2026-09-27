@@ -92,7 +92,7 @@
           class="btn btn-ghost btn-xs font-normal text-base-content/60"
           onclick={() => (goalOpen = !goalOpen)}
         >
-          {goalLabel}
+          <span class="[text-box:trim-both_cap_alphabetic]">{goalLabel}</span>
           <ChevronRight class="size-3" />
         </button>
         <div
