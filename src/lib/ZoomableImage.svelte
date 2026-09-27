@@ -129,8 +129,9 @@
     bind:this={viewport}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    class="flex h-full w-full touch-none items-center justify-center overflow-hidden {zoom === 1 ? 'cursor-default' : drag ? 'cursor-grabbing' : 'cursor-grab'}"
+    class="flex h-full w-full touch-none select-none items-center justify-center overflow-hidden {zoom === 1 ? 'cursor-default' : drag ? 'cursor-grabbing' : 'cursor-grab'}"
     onpointerdown={onPointerDown}
+    onmousedown={(e) => e.detail > 1 && e.preventDefault()}
     onpointermove={onPointerMove}
     onpointerup={() => (drag = null)}
     onpointercancel={() => (drag = null)}
