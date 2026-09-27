@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   let dialog = $state<HTMLDialogElement>();
   let version = $state("");
@@ -10,13 +11,30 @@
 
   const downloaded = $derived(progress !== null && progress.total !== null && progress.downloaded >= progress.total);
 
-  invoke<string | null>("check_update")
-    .then((available) => {
-      if (!available) return;
-      version = available;
-      dialog?.showModal();
-    })
-    .catch(() => {});
+  let lastCheck = 0;
+
+  function check() {
+    if (dialog?.open || Date.now() - lastCheck < 24 * 60 * 60 * 1000) return;
+    lastCheck = Date.now();
+    invoke<string | null>("check_update")
+      .then((available) => {
+        if (!available) return;
+        version = available;
+        dialog?.showModal();
+      })
+      .catch(() => {});
+  }
+
+  check();
+
+  $effect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) check();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  });
 
   $effect(() => {
     const unlisten = listen<{ downloaded: number; total: number | null }>("update://progress", ({ payload }) => {
