@@ -83,6 +83,10 @@ body,
 body {
   font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
     "Yu Gothic UI", "Noto Sans JP", sans-serif;
+}
+
+body,
+dialog {
   -webkit-user-select: none;
   user-select: none;
 }
