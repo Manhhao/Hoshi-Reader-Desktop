@@ -135,12 +135,12 @@
     <div class="divider my-0"></div>
 
     <div class="flex items-start gap-2">
-      <div class="grid shrink-0 gap-[3px] pt-[17px]" style="grid-template-rows: repeat(7, 0.625rem)">
+      <div class="grid shrink-0 gap-[3px] pt-[19px]" style="grid-template-rows: repeat(7, 0.625rem)">
         {#each weekdayLabels as label, i (i)}
           <span class="text-[10px] leading-[0.625rem] text-base-content/60">{label}</span>
         {/each}
       </div>
-      <div class="min-w-0 flex-1 overflow-x-auto pb-1">
+      <div class="min-w-0 flex-1 overflow-x-auto px-0.5 pt-0.5 pb-1">
         <div class="mb-[3px] grid w-max gap-[3px]" style="grid-template-columns: {columns}">
           {#each weeks as week (week.key)}
             <span class="h-[14px] text-[10px] leading-[14px] whitespace-nowrap text-base-content/60">
