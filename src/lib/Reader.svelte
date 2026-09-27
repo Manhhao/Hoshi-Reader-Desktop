@@ -1713,10 +1713,15 @@
             <div class="flex w-28 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-base-300 bg-base-200/50 py-2 [scrollbar-width:thin]" bind:this={thumbStripEl}>
               {#each displayedImages as image, i (image)}
                 <button
-                  class="flex shrink-0 rounded-md p-2 transition-colors {i === galleryIndex ? 'bg-base-300' : 'hover:bg-base-300/50'}"
+                  class="group flex shrink-0 rounded-md p-2 transition-colors {i === galleryIndex ? 'bg-base-300' : 'hover:bg-base-300/50'}"
                   onclick={() => galleryGoTo(i)}
                 >
-                  <img src={image + "?w=256"} alt="" loading="lazy" class="h-[90px] w-16 rounded-sm object-cover" />
+                  <img
+                    src={image + "?w=256"}
+                    alt=""
+                    loading="lazy"
+                    class="h-[90px] w-16 rounded-sm object-cover transition-opacity {i === galleryIndex ? '' : 'opacity-50 group-hover:opacity-100'}"
+                  />
                 </button>
               {/each}
             </div>
