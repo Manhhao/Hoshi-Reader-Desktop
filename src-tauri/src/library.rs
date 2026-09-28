@@ -638,7 +638,7 @@ fn find_cover_in_manifest(epub: &Epub) -> Option<rbook::epub::manifest::EpubMani
         })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String> {
     let epub = Epub::open(&path).map_err(|error| error.to_string())?;
     let source_name = Path::new(&path)
@@ -744,7 +744,7 @@ fn repair_missing_cover(dir: &Path, meta: &mut BookMetadata) {
     write_json(&dir.join(METADATA_FILE), meta).ok();
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_books(app: AppHandle) -> Vec<BookListItem> {
     load_shelf_list(&app);
     fs::read_dir(books_dir(&app))
@@ -894,7 +894,7 @@ pub(crate) fn save_shelf_list(app: &AppHandle, shelves: &ShelfList) -> Result<()
     write_json(&shelves_path(app), shelves)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_shelves(app: AppHandle) -> Vec<BookShelf> {
     let list = load_shelf_list(&app);
     let books = load_all_books(&app);

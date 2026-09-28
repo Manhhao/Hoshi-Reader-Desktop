@@ -311,7 +311,7 @@ pub fn load_archived(app: &AppHandle, reset_time: i64) -> Vec<BookStatistics> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_all_statistics(app: AppHandle, reset_time: i64) -> Vec<BookStatistics> {
     let books_directory = library::books_dir(&app);
     let mut books: Vec<BookStatistics> = library::load_all_books(&app)

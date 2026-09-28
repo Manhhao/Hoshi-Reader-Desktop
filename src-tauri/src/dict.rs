@@ -694,7 +694,7 @@ fn replace_directory(source: &Path, destination: &Path) -> Result<(), String> {
     copy_directory(source, destination)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_dictionaries(
     app: AppHandle,
     state: State<LookupState>,

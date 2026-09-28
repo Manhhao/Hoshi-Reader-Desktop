@@ -85,7 +85,7 @@ fn restore_archive(archive_path: &Path, destination: &Path) -> Fallible {
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backup_folder(app: AppHandle, folder: String, destination: String) -> Result<(), String> {
     let root = storage_dir(&app, &folder)?;
     archive_directory(&root, Path::new(&destination)).map_err(|error| error.to_string())
