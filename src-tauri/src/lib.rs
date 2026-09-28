@@ -8,6 +8,7 @@ mod css;
 mod dict;
 mod fonts;
 mod highlights;
+mod ime;
 mod library;
 mod local_audio;
 mod menu_theme;
@@ -105,6 +106,7 @@ pub fn run() {
             search::search_book,
             highlights::load_highlights,
             highlights::save_highlights,
+            ime::set_japanese_ime,
             library::load_bookmark,
             library::mark_book_read,
             library::save_bookmark,

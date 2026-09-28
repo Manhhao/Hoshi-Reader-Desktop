@@ -180,6 +180,8 @@
         autocapitalize="off"
         spellcheck="false"
         bind:value={query}
+        onfocus={() => invoke("set_japanese_ime", { enable: true })}
+        onblur={() => invoke("set_japanese_ime", { enable: false })}
         onkeydown={(e) => {
           if (e.key === "Enter") runLookup();
         }}

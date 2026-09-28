@@ -1,4 +1,5 @@
 import AVFoundation
+import Carbon
 import Foundation
 import Speech
 
@@ -160,4 +161,29 @@ func decodeAudio(
     }
     let channels = Int(format.channelCount)
     callback(context, data[0], Int(buffer.frameLength) * channels, UInt32(format.sampleRate), UInt32(channels))
+}
+
+private var previousInputSource: TISInputSource?
+
+@_cdecl("hoshi_set_japanese_ime")
+func setJapaneseIme(enable: Bool) {
+    guard enable else {
+        if let previous = previousInputSource {
+            TISSelectInputSource(previous)
+        }
+        previousInputSource = nil
+        return
+    }
+    let filter = [
+        kTISPropertyInputModeID as String: "com.apple.inputmethod.Japanese",
+        kTISPropertyInputSourceIsSelectCapable as String: true,
+    ] as CFDictionary
+    guard previousInputSource == nil,
+          let sources = TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource],
+          let japanese = sources.first
+    else {
+        return
+    }
+    previousInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+    TISSelectInputSource(japanese)
 }

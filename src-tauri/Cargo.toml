@@ -48,7 +48,12 @@ objc2 = "0.6"
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_LibraryLoader"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 windows = { version = "0.61", features = [
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
