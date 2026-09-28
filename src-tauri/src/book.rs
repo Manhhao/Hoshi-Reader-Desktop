@@ -59,6 +59,7 @@ pub fn open_book(
         library::book_epub_path(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;
     let epub = Epub::open(path).map_err(|error| error.to_string())?;
     let root = library::book_dir(&app, &id).unwrap();
+    let document = book_document(&epub);
     let info = library::load_book_info_at(&root);
     if info.is_none() {
         let processed = library::process_book(&epub);
@@ -73,7 +74,13 @@ pub fn open_book(
             };
             library::write_json(&root.join(library::BOOKMARK_FILE), &resolved).ok();
         }
-    } else if info.is_some_and(|info| info.images.is_none()) {
+    } else if info.is_some_and(|info| {
+        info.images.is_none()
+            || !document
+                .spine
+                .iter()
+                .any(|href| info.chapter_info.contains_key(href))
+    }) {
         let processed = library::process_book(&epub);
         library::write_json(&root.join(library::BOOKINFO_FILE), &processed).ok();
     }
@@ -81,7 +88,6 @@ pub fn open_book(
     metadata.last_access = library::now_apple();
     library::save_metadata(&metadata, &root).ok();
 
-    let document = book_document(&epub);
     *state.0.lock().unwrap() = Some((id, epub));
     Ok(document)
 }
