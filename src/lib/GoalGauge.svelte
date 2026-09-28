@@ -71,7 +71,7 @@
       stroke-width="4"
       stroke-linecap="round"
       pathLength="100"
-      stroke-dasharray="100"
+      stroke-dasharray="100 200"
       stroke-dashoffset={100 - Math.max(percent, 0.5)}
       class="statistics-gauge text-primary"
     />
