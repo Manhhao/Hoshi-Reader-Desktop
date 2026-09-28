@@ -450,7 +450,16 @@
             {/if}
             {displayTitle(book)}
           </span>
-          {#if book.author}
+          {#if downloadingBooks[book.id] !== undefined}
+            <div class="flex h-4 w-40 items-center gap-1 text-base-content/60">
+              <CircleArrowDown class="size-3.5 shrink-0" />
+              <progress
+                class="progress h-1 flex-1"
+                value={downloadingBooks[book.id] * 100}
+                max="100"
+              ></progress>
+            </div>
+          {:else if book.author}
             <span class="truncate text-xs text-base-content/60">{book.author}</span>
           {/if}
         </div>
