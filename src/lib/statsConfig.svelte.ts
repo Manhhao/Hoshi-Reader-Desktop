@@ -9,6 +9,7 @@ export type StatsConfig = {
   statisticsGoalMetric: StatisticsGoalMetric;
   statisticsDailyTimeGoal: number;
   statisticsDailyCharacterGoal: number;
+  statisticsHideOnHome: boolean;
 };
 
 const defaults: StatsConfig = {
@@ -17,6 +18,7 @@ const defaults: StatsConfig = {
   statisticsGoalMetric: "time",
   statisticsDailyTimeGoal: 20,
   statisticsDailyCharacterGoal: 5000,
+  statisticsHideOnHome: false,
 };
 
 const store = persisted<StatsConfig>("stats.config", defaults);

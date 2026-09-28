@@ -3,6 +3,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { ask } from "@tauri-apps/plugin-dialog";
   import SettingRow from "./SettingRow.svelte";
+  import SettingToggle from "./SettingToggle.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import {
     statsConfig,
@@ -54,7 +55,7 @@
   }
 </script>
 
-<SettingsSection title="Statistics" compact>
+<section class="flex flex-col gap-3">
   <SettingRow compact label="Autostart">
     <div class="join">
       {#each autostartModes as mode (mode)}
@@ -85,7 +86,13 @@
       }}
     />
   </SettingRow>
-</SettingsSection>
+  <SettingToggle
+    compact
+    label="Hide Stats Overview on Home"
+    bind:checked={statsConfig.statisticsHideOnHome}
+    onchange={saveStatsConfig}
+  />
+</section>
 
 {#if archivedCount > 0}
   <SettingsSection title="Archive" compact>

@@ -135,7 +135,9 @@
   <div class="@container flex flex-col gap-6 p-5">
     <h1 class="text-xl font-semibold">Home</h1>
 
-    <HomeStatistics {model} onOpen={onStatistics} />
+    {#if !statsConfig.statisticsHideOnHome}
+      <HomeStatistics {model} onOpen={onStatistics} />
+    {/if}
 
     <div class="grid items-start gap-7 @3xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section class="@container/reading flex min-w-0 flex-col gap-3">
