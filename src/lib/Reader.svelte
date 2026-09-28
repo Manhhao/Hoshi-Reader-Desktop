@@ -712,9 +712,11 @@
     };
   });
 
+  let trackingStoppedManually = false;
   function toggleTracking() {
     if (stats.isTracking) stats.stopTracking();
     else stats.startTracking();
+    trackingStoppedManually = !stats.isTracking;
   }
 
   function formatDuration(seconds: number): string {
@@ -1115,7 +1117,7 @@
           stats.resetTrackingBaseline();
         } else {
           stats.flushStats();
-          if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking) {
+          if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking && !trackingStoppedManually) {
             stats.startTracking();
           }
         }
