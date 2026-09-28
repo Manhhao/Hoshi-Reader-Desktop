@@ -36,7 +36,6 @@ sha2 = "0.11.0"
 keyring-core = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 hoshidicts = { git = "https://github.com/Manhhao/hoshidicts-rs.git", rev = "57a0e43" }
-symphonia = { version = "0.6.1", default-features = false, features = ["mp3", "isomp4", "aac"] }
 mp3lame-encoder = "0.2.4"
 unicode-normalization = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -50,6 +49,12 @@ apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_LibraryLoader"] }
+windows = { version = "0.61", features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
 windows-native-keyring-store = "1"
 
 [profile.dev.package."*"]

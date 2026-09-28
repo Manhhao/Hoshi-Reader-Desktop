@@ -133,3 +133,31 @@ func align(
         String(decoding: try! JSONEncoder().encode(result), as: UTF8.self).withCString { callback(context, $0) }
     }
 }
+
+@_cdecl("hoshi_decode_audio")
+func decodeAudio(
+    path: UnsafePointer<CChar>,
+    from start: Double,
+    to end: Double,
+    context: UnsafeMutableRawPointer,
+    callback: @convention(c) (UnsafeMutableRawPointer, UnsafePointer<Int16>, Int, UInt32, UInt32) -> Void
+) {
+    let url = URL(fileURLWithPath: String(cString: path))
+    guard let file = try? AVAudioFile(forReading: url, commonFormat: .pcmFormatInt16, interleaved: true) else {
+        return
+    }
+    let format = file.processingFormat
+    let first = min(AVAudioFramePosition(start * format.sampleRate), file.length)
+    let last = min(AVAudioFramePosition(end * format.sampleRate), file.length)
+    guard last > first,
+          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(last - first))
+    else {
+        return
+    }
+    file.framePosition = first
+    guard (try? file.read(into: buffer)) != nil, let data = buffer.int16ChannelData else {
+        return
+    }
+    let channels = Int(format.channelCount)
+    callback(context, data[0], Int(buffer.frameLength) * channels, UInt32(format.sampleRate), UInt32(channels))
+}

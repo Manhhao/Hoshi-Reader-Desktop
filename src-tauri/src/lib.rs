@@ -11,6 +11,7 @@ mod highlights;
 mod library;
 mod local_audio;
 mod menu_theme;
+mod pcm;
 mod sasayaki;
 mod search;
 mod statistics;

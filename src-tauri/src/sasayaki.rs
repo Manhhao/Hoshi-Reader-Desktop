@@ -479,9 +479,7 @@ fn audio_chapters(path: &Path) -> Option<Vec<AudioChapter>> {
     let (start, end) = find_atom(&mut file, 0, len, b"moov")?;
     let (start, end) = find_atom(&mut file, start, end, b"udta")?;
     let (start, end) = find_atom(&mut file, start, end, b"chpl")?;
-    let mut data = vec![0u8; (end - start) as usize];
-    file.seek(SeekFrom::Start(start)).ok()?;
-    file.read_exact(&mut data).ok()?;
+    let data = read_range(&mut file, start, end)?;
 
     let mut position = if data[0] == 0 { 4 } else { 8 };
     let count = data[position];
@@ -533,16 +531,13 @@ pub fn audiobook_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Respons
     let not_found = || Response::builder().status(404).body(Vec::new()).unwrap();
     let id = request.uri().path().trim_start_matches('/');
     if let Some(id) = id.strip_suffix("/cover") {
-        let Some(cover) = audio_path(app, id).and_then(|path| audio_cover(&path)) else {
+        let Some((mime, cover)) = audio_path(app, id).and_then(|path| audio_cover(&path)) else {
             return not_found();
         };
         return Response::builder()
-            .header(
-                CONTENT_TYPE,
-                cover.media_type.as_deref().unwrap_or("image/jpeg"),
-            )
+            .header(CONTENT_TYPE, mime)
             .header("Access-Control-Allow-Origin", "*")
-            .body(cover.data.into_vec())
+            .body(cover)
             .unwrap();
     }
     let Some(path) = audio_path(app, id) else {
@@ -634,108 +629,79 @@ pub fn cue_sentence_audio(
     encode_clip(&path, start, end)
 }
 
-fn audio_cover(path: &Path) -> Option<symphonia::core::meta::Visual> {
-    use symphonia::core::formats::FormatOptions;
-    use symphonia::core::formats::probe::Hint;
-    use symphonia::core::io::MediaSourceStream;
-    use symphonia::core::meta::MetadataOptions;
-
-    let stream = MediaSourceStream::new(Box::new(File::open(path).ok()?), Default::default());
-    let mut hint = Hint::new();
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        hint.with_extension(extension);
-    }
-    let mut format = symphonia::default::get_probe()
-        .probe(
-            &hint,
-            stream,
-            FormatOptions::default(),
-            MetadataOptions::default(),
-        )
-        .ok()?;
-    let mut metadata = format.metadata();
-    metadata.skip_to_latest()?.media.visuals.first().cloned()
+fn audio_cover(path: &Path) -> Option<(&'static str, Vec<u8>)> {
+    let mut file = File::open(path).ok()?;
+    let data = if audio_mime(path) == "audio/mp4" {
+        mp4_cover(&mut file)?
+    } else {
+        id3_cover(&mut file)?
+    };
+    let mime = if data.starts_with(b"\x89PNG") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+    Some((mime, data))
 }
 
-fn encode_clip(path: &std::path::Path, start: f64, end: f64) -> Option<Vec<u8>> {
-    use symphonia::core::codecs::audio::AudioDecoderOptions;
-    use symphonia::core::formats::probe::Hint;
-    use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo, TrackType};
-    use symphonia::core::io::MediaSourceStream;
-    use symphonia::core::meta::MetadataOptions;
-    use symphonia::core::units::Time;
+fn read_range(file: &mut File, start: u64, end: u64) -> Option<Vec<u8>> {
+    let mut data = vec![0u8; end.checked_sub(start)? as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut data).ok()?;
+    Some(data)
+}
 
-    let file = File::open(path).ok()?;
-    let stream = MediaSourceStream::new(Box::new(file), Default::default());
-    let mut hint = Hint::new();
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        hint.with_extension(extension);
-    }
-    let mut format = symphonia::default::get_probe()
-        .probe(
-            &hint,
-            stream,
-            FormatOptions::default(),
-            MetadataOptions::default(),
-        )
-        .ok()?;
+fn mp4_cover(file: &mut File) -> Option<Vec<u8>> {
+    let len = file.metadata().ok()?.len();
+    let (start, end) = find_atom(file, 0, len, b"moov")?;
+    let (start, end) = find_atom(file, start, end, b"udta")?;
+    let (start, end) = find_atom(file, start, end, b"meta")?;
+    let (start, end) = find_atom(file, start + 4, end, b"ilst")?;
+    let (start, end) = find_atom(file, start, end, b"covr")?;
+    let (start, end) = find_atom(file, start, end, b"data")?;
+    read_range(file, start + 8, end)
+}
 
-    let track = format.default_track(TrackType::Audio)?;
-    let track_id = track.id;
-    let time_base = track.time_base?;
-    let params = match track.codec_params.as_ref()? {
-        symphonia::core::codecs::CodecParameters::Audio(params) => params.clone(),
-        _ => return None,
+fn id3_cover(file: &mut File) -> Option<Vec<u8>> {
+    let syncsafe = |bytes: &[u8]| {
+        bytes
+            .iter()
+            .fold(0usize, |n, &byte| n << 7 | usize::from(byte & 0x7f))
     };
-    let mut decoder = symphonia::default::get_codecs()
-        .make_audio_decoder(&params, &AudioDecoderOptions::default())
-        .ok()?;
-
-    format
-        .seek(
-            SeekMode::Accurate,
-            SeekTo::Time {
-                time: Time::from_millis((start * 1000.0) as i64),
-                track_id: Some(track_id),
-            },
-        )
-        .ok()?;
-
-    let mut samples: Vec<i16> = Vec::new();
-    let mut chunk: Vec<i16> = Vec::new();
-    let mut spec: Option<(u32, usize)> = None;
-    while let Ok(Some(packet)) = format.next_packet() {
-        if packet.track_id != track_id {
-            continue;
-        }
-        let time = time_base.calc_time_saturating(packet.pts).as_secs_f64();
-        if time > end {
-            break;
-        }
-        let Ok(buffer) = decoder.decode(&packet) else {
-            continue;
-        };
-        let rate = buffer.spec().rate();
-        let channels = buffer.spec().channels().count();
-        if channels == 0 || channels > 2 {
-            return None;
-        }
-        spec.get_or_insert((rate, channels));
-        buffer.copy_to_vec_interleaved(&mut chunk);
-        let skip = if time < start {
-            (((start - time) * rate as f64) as usize) * channels
-        } else {
-            0
-        };
-        if skip >= chunk.len() {
-            continue;
-        }
-        samples.extend_from_slice(&chunk[skip..]);
+    let mut header = [0u8; 10];
+    file.read_exact(&mut header).ok()?;
+    if &header[..3] != b"ID3" {
+        return None;
     }
+    let mut tag = vec![0u8; syncsafe(&header[6..10])];
+    file.read_exact(&mut tag).ok()?;
 
-    let (rate, channels) = spec?;
-    samples.truncate((((end - start) * rate as f64) as usize) * channels);
-    if samples.is_empty() {
+    let mut position = 0;
+    while let Some(frame) = tag
+        .get(position..position + 10)
+        .filter(|frame| frame[0] != 0)
+    {
+        let size = if header[3] == 4 {
+            syncsafe(&frame[4..8])
+        } else {
+            u32::from_be_bytes(frame[4..8].try_into().unwrap()) as usize
+        };
+        let body = tag.get(position + 10..position + 10 + size)?;
+        if &frame[..4] == b"APIC" {
+            let image = [&b"\xFF\xD8\xFF"[..], b"\x89PNG"]
+                .iter()
+                .filter_map(|signature| body.windows(signature.len()).position(|w| w == *signature))
+                .min()?;
+            return Some(body[image..].to_vec());
+        }
+        position += 10 + size;
+    }
+    None
+}
+
+fn encode_clip(path: &Path, start: f64, end: f64) -> Option<Vec<u8>> {
+    let (samples, rate, channels) = crate::pcm::decode(path, start, end, audio_mime(path))?;
+    if channels == 0 || channels > 2 || samples.is_empty() {
         return None;
     }
 
