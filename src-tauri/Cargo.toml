@@ -1,6 +1,6 @@
 [package]
 name = "hoshi-reader"
-version = "1.0.0"
+version = "1.0.1"
 description = "Japanese EPUB reader for macOS and Windows"
 authors = ["Manhhao"]
 license = "GPL-3.0-or-later"
