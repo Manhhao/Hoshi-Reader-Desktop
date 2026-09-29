@@ -128,6 +128,8 @@
   let leftPanel = $state<typeof readerPanel>(null);
   let rightPanel = $state<typeof readerPanel>(null);
   let wasPaused = $state(false);
+  let pressHeld = false;
+  let pressLookup: Promise<void> | null = null;
   let showBar = $state(false);
 
   let titleDownAt: { x: number; y: number } | null = null;
@@ -330,9 +332,17 @@
   });
 
   function resumeAfterPopups() {
-    if (popups.length) return;
+    if (popups.length || pressHeld) return;
     if (wasPaused && sasayaki && !sasayaki.isPlaying) sasayaki.togglePlayback();
     wasPaused = false;
+  }
+
+  async function releasePress() {
+    const lookup = pressLookup;
+    await lookup;
+    if (pressLookup !== lookup) return;
+    pressHeld = false;
+    resumeAfterPopups();
   }
 
   function toggleSasayakiPlayback() {
@@ -1016,7 +1026,7 @@
     if (sourceKey !== frames[frames.length - 1]?.key) return;
     switch (m?.hoshi) {
       case "selected":
-        openLookup(m.text, m.rect, m.normalizedOffset, m.sentence, m.clozeOffset);
+        pressLookup = openLookup(m.text, m.rect, m.normalizedOffset, m.sentence, m.clozeOffset);
         break;
       case "lookup-miss":
         closePopups();
@@ -1026,7 +1036,12 @@
         pressDismissed = popups.length > 0 || readerPanel !== null || showBar;
         readerPanel = null;
         showBar = false;
+        pressHeld = true;
+        pressLookup = null;
         closePopups();
+        break;
+      case "release":
+        releasePress();
         break;
       case "reader-hotkey":
         onReaderHotkey(m.key);

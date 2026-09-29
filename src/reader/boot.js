@@ -427,6 +427,9 @@
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
   });
+  document.addEventListener("mouseup", () => {
+    setTimeout(() => parent.postMessage({ hoshi: "release" }, "*"));
+  });
   document.addEventListener("auxclick", (e) => {
     const token = mouseHotkeyTokens[e.button];
     if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
