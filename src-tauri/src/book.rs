@@ -122,7 +122,7 @@ pub fn load_contents(app: AppHandle, id: String) -> Result<BookDocument, String>
     Ok(book_document(&epub))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_book_image(app: AppHandle, path: String, destination: String) -> Result<(), String> {
     let (_, bytes) = serve_resource(&app, &path).ok_or("Image not found")?;
     std::fs::write(destination, bytes).map_err(|error| error.to_string())

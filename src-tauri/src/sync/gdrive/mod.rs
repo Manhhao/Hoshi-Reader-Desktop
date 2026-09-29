@@ -42,7 +42,7 @@ pub fn gdrive_sync_state() -> manager::SyncStatus {
     manager::status()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn gdrive_published_epub(app: AppHandle, id: String) -> bool {
     let Some(book) = library::load_metadata(&app, &id) else {
         return false;

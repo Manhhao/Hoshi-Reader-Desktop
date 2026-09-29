@@ -477,7 +477,7 @@ pub struct PopupAnkiConfig {
     audio_enable_autoplay: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn anki_config(app: AppHandle, state: State<AnkiState>) -> PopupAnkiConfig {
     let config = load_config(&app);
     PopupAnkiConfig {
@@ -532,7 +532,7 @@ pub async fn fetch_audio_source_list(app: &AppHandle, uri: &str) -> Result<Vec<u
     Ok(bytes.to_vec())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn anki_get_settings(app: AppHandle) -> AnkiConfig {
     load_config(&app)
 }

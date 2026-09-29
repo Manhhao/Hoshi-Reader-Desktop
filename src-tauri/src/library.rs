@@ -814,7 +814,7 @@ pub fn rename_book(app: AppHandle, id: String, title: String) {
         .ok();
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn epub_author(app: AppHandle, id: String) -> Option<String> {
     author_from_epub(&Epub::open(book_epub_path(&app, &id)?).ok()?)
 }

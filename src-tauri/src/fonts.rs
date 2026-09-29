@@ -38,7 +38,7 @@ fn font_info(path: &Path) -> Option<FontInfo> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_fonts(app: AppHandle) -> Vec<FontInfo> {
     let mut fonts: Vec<FontInfo> = fs::read_dir(fonts_dir(&app))
         .into_iter()
@@ -49,7 +49,7 @@ pub fn list_fonts(app: AppHandle) -> Vec<FontInfo> {
     fonts
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_fonts(app: AppHandle, paths: Vec<String>) {
     let dir = fonts_dir(&app);
     for path in paths {

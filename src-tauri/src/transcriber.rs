@@ -151,7 +151,7 @@ pub async fn sasayaki_transcriber_status() -> &'static str {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sasayaki_load_transcript(app: AppHandle, id: String) -> Option<TranscriptProgress> {
     library::read_book_json(&app, &id, TRANSCRIPT_FILE)
 }

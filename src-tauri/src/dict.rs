@@ -462,7 +462,7 @@ pub enum FrequencySortOrder {
     Disabled,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lookup(
     app: AppHandle,
     state: State<LookupState>,
@@ -540,7 +540,7 @@ pub struct KanjiResponse {
     entries: Vec<KanjiEntry>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lookup_kanji(
     app: AppHandle,
     state: State<LookupState>,
@@ -1023,7 +1023,7 @@ pub struct DictionaryLists {
     kanji: Vec<DictionaryInfo>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_dictionaries(app: AppHandle) -> DictionaryLists {
     let config = load_config(&app);
     let list = |kind: DictionaryType| {

@@ -394,7 +394,7 @@ pub fn save_playback(playback: &mut SasayakiPlayback, root: &Path) -> Result<boo
     Ok(changed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sasayaki_match(
     app: AppHandle,
     id: String,
@@ -411,12 +411,12 @@ pub fn sasayaki_match(
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sasayaki_load_match(app: AppHandle, id: String) -> Option<SasayakiMatchData> {
     load_match(&app, &id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sasayaki_load_playback(app: AppHandle, id: String) -> Option<SasayakiPlayback> {
     load_playback(&app, &id)
 }
@@ -440,7 +440,7 @@ pub fn sasayaki_transcriber_status() -> &'static str {
     "unsupported"
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sasayaki_audio_chapters(app: AppHandle, id: String) -> Vec<AudioChapter> {
     audio_path(&app, &id)
         .filter(|path| audio_mime(path) == "audio/mp4")
