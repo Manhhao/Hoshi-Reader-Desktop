@@ -114,7 +114,7 @@ fn book_document(epub: &Epub) -> BookDocument {
     BookDocument { title, spine, toc }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_contents(app: AppHandle, id: String) -> Result<BookDocument, String> {
     let path =
         library::book_epub_path(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;

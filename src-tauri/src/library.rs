@@ -211,12 +211,12 @@ pub fn count_chars(html: &str) -> usize {
     UnicodeSegmentation::graphemes(filtered(html).as_str(), true).count()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_book_info(app: AppHandle, id: String) -> BookInfo {
     read_book_json(&app, &id, BOOKINFO_FILE).unwrap_or_default()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_bookmark(app: AppHandle, id: String) -> Option<Bookmark> {
     read_book_json(&app, &id, BOOKMARK_FILE)
 }
