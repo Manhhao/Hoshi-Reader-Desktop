@@ -12,7 +12,7 @@
   const buckets = $derived(model.buckets(model.referenceDate));
   const average = $derived(model.averageReadingTime(model.referenceDate) ?? 0);
   const maxHours = $derived(
-    Math.max(1, Math.ceil(Math.max(...buckets.map((day) => day.readingTime), 0) / 3600)),
+    Math.max(2, Math.ceil(Math.max(...buckets.map((day) => day.readingTime), 0) / 3600)),
   );
   const headlineValue = $derived(model.selectedDay?.readingTime ?? average);
 

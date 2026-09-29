@@ -24,7 +24,7 @@
   const recentTime = $derived(recentDays.reduce((total, day) => total + day.readingTime, 0));
   const recentAverage = $derived(recentTime / 7);
   const recentCharacters = $derived(recentDays.reduce((total, day) => total + day.charactersRead, 0));
-  const chartMax = $derived(Math.max(3600, Math.ceil(Math.max(...recentDays.map((day) => day.readingTime)) / 3600) * 3600));
+  const chartMax = $derived(Math.max(7200, Math.ceil(Math.max(...recentDays.map((day) => day.readingTime)) / 3600) * 3600));
   const streak = $derived(model.streaks.current.count);
   const first = $derived(addDays(startOfWeek(keyToDate(model.today)), -77));
   const weeks = $derived(Array.from({ length: 12 }, (_, week) => {
