@@ -11,6 +11,7 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "Hoshi Reader",
         "theme": "Light",
         "titleBarStyle": "Overlay",

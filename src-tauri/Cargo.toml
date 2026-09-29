@@ -55,10 +55,14 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows = { version = "0.61", features = [
+    "Media",
+    "Storage_Streams",
     "Win32_Media_MediaFoundation",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Variant",
+    "Win32_System_WinRT",
+    "Win32_UI_Shell",
 ] }
 windows-native-keyring-store = "1"
 

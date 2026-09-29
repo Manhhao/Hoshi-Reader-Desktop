@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { isWindows } from "./platform";
 import { readerConfig } from "./readerConfig.svelte";
 import { schemeUrl } from "./scheme";
 import { sasayakiConfig } from "./sasayakiConfig.svelte";
 import type { SasayakiImage, SasayakiMatch, SasayakiMatchData, SasayakiPlayback } from "./types";
 
 const SKIP_INTERVAL = 15;
-const MEDIA_ACTIONS: MediaSessionAction[] = ["play", "pause", "previoustrack", "nexttrack", "seekto"];
 
 class CueTimeline {
   private cues: SasayakiMatch[];
@@ -90,6 +91,18 @@ export class SasayakiPlayer {
   private audioChapters: { start: number; title: string }[] = [];
   private artwork: string | null = null;
   private chapter: string | null = null;
+  private unlistenMediaControls: UnlistenFn | null = null;
+  private mediaActions: Partial<Record<MediaSessionAction, MediaSessionActionHandler>> = {
+    play: () => {
+      if (!this.isPlaying) this.togglePlayback();
+    },
+    pause: () => {
+      if (this.isPlaying) this.togglePlayback();
+    },
+    previoustrack: () => this.prevCue(),
+    nexttrack: () => this.nextCue(),
+    seekto: (details) => this.scrub(details.seekTime!),
+  };
 
   currentCue: SasayakiMatch | null = null;
   private lastCue: SasayakiMatch | null = null;
@@ -399,8 +412,16 @@ export class SasayakiPlayer {
     }
     this.hasAudio = false;
     this.cover = null;
-    navigator.mediaSession.metadata = null;
-    for (const action of MEDIA_ACTIONS) navigator.mediaSession.setActionHandler(action, null);
+    if (isWindows) {
+      this.unlistenMediaControls?.();
+      this.unlistenMediaControls = null;
+      invoke("media_controls_clear");
+    } else {
+      navigator.mediaSession.metadata = null;
+      for (const action in this.mediaActions) {
+        navigator.mediaSession.setActionHandler(action as MediaSessionAction, null);
+      }
+    }
     this.isPlaying = false;
     this.duration = 0;
     this.stopPlaybackTime = null;
@@ -431,7 +452,6 @@ export class SasayakiPlayer {
   }
 
   private setupMediaSession(audio: HTMLAudioElement) {
-    const session = navigator.mediaSession;
     this.audioChapters = [];
     this.artwork = this.nowPlaying.cover;
     this.chapter = null;
@@ -450,15 +470,23 @@ export class SasayakiPlayer {
       this.artwork = cover;
       this.updateMetadata();
     });
-    session.setActionHandler("play", () => {
-      if (!this.isPlaying) this.togglePlayback();
-    });
-    session.setActionHandler("pause", () => {
-      if (this.isPlaying) this.togglePlayback();
-    });
-    session.setActionHandler("previoustrack", () => this.prevCue());
-    session.setActionHandler("nexttrack", () => this.nextCue());
-    session.setActionHandler("seekto", (details) => this.scrub(details.seekTime!));
+    if (isWindows) {
+      const setPlaying = (playing: boolean) => {
+        if (this.audio === audio) invoke("media_controls_playing", { playing });
+      };
+      audio.addEventListener("play", () => setPlaying(true));
+      audio.addEventListener("pause", () => setPlaying(false));
+      listen<MediaSessionAction>("hoshi://media-control", (event) =>
+        this.mediaActions[event.payload]?.({ action: event.payload }),
+      ).then((unlisten) => {
+        if (this.audio === audio) this.unlistenMediaControls = unlisten;
+        else unlisten();
+      });
+      return;
+    }
+    for (const [action, handler] of Object.entries(this.mediaActions)) {
+      navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
+    }
   }
 
   private updateChapter() {
@@ -471,6 +499,14 @@ export class SasayakiPlayer {
   }
 
   private updateMetadata() {
+    if (isWindows) {
+      invoke("media_controls_metadata", {
+        id: this.id,
+        title: this.nowPlaying.title,
+        artist: this.chapter ?? "",
+      });
+      return;
+    }
     navigator.mediaSession.metadata = new MediaMetadata({
       title: this.nowPlaying.title,
       artist: this.chapter ?? "",

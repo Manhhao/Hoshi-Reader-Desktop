@@ -498,7 +498,7 @@ fn audio_chapters(path: &Path) -> Option<Vec<AudioChapter>> {
         .collect()
 }
 
-fn audio_path(app: &AppHandle, id: &str) -> Option<PathBuf> {
+pub(crate) fn audio_path(app: &AppHandle, id: &str) -> Option<PathBuf> {
     let path = PathBuf::from(load_playback(app, id)?.audio_path?);
     path.is_file().then_some(path)
 }
@@ -629,7 +629,7 @@ pub fn cue_sentence_audio(
     encode_clip(&path, start, end)
 }
 
-fn audio_cover(path: &Path) -> Option<(&'static str, Vec<u8>)> {
+pub(crate) fn audio_cover(path: &Path) -> Option<(&'static str, Vec<u8>)> {
     let mut file = File::open(path).ok()?;
     let data = if audio_mime(path) == "audio/mp4" {
         mp4_cover(&mut file)?

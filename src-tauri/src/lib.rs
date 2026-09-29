@@ -11,6 +11,8 @@ mod highlights;
 mod ime;
 mod library;
 mod local_audio;
+#[cfg(windows)]
+mod media_controls;
 mod menu_theme;
 mod pcm;
 mod sasayaki;
@@ -140,6 +142,12 @@ pub fn run() {
             transcriber::sasayaki_pause_transcription,
             #[cfg(target_os = "macos")]
             transcriber::sasayaki_transcribe,
+            #[cfg(windows)]
+            media_controls::media_controls_metadata,
+            #[cfg(windows)]
+            media_controls::media_controls_playing,
+            #[cfg(windows)]
+            media_controls::media_controls_clear,
             backup::backup_folder,
             backup::restore_folder,
             dict::load_collapsed_dictionaries,
@@ -186,6 +194,18 @@ pub fn run() {
             updater::install_update
         ])
         .setup(|app| {
+            #[cfg(windows)]
+            media_controls::set_app_id(&app.config().identifier).ok();
+            let builder = tauri::WebviewWindowBuilder::from_config(
+                app.handle(),
+                &app.config().app.windows[0],
+            )?;
+            #[cfg(windows)]
+            let builder = builder.additional_browser_args(media_controls::BROWSER_ARGS);
+            let _window = builder.build()?;
+            #[cfg(windows)]
+            media_controls::init(&_window).ok();
+
             crash::init(app.handle());
             sync::init(app.handle());
             dict::initialize(app.handle());
