@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, BufWriter};
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, State};
@@ -25,7 +25,7 @@ fn archive_name(path: &Path, root: &Path) -> Fallible<String> {
 }
 
 fn add_directory(
-    writer: &mut ZipWriter<fs::File>,
+    writer: &mut ZipWriter<BufWriter<fs::File>>,
     root: &Path,
     directory: &Path,
     options: SimpleFileOptions,
@@ -48,11 +48,19 @@ fn add_directory(
 }
 
 fn archive_directory(root: &Path, destination: &Path) -> Fallible {
-    let mut writer = ZipWriter::new(fs::File::create(destination)?);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    add_directory(&mut writer, root, root, options)?;
-    writer.finish()?;
-    Ok(())
+    let temporary = destination.with_file_name(format!(".{}.tmp", uuid::Uuid::new_v4().simple()));
+    let result = (|| -> Fallible {
+        let mut writer = ZipWriter::new(BufWriter::new(fs::File::create(&temporary)?));
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        add_directory(&mut writer, root, root, options)?;
+        writer.finish()?.into_inner()?.sync_all()?;
+        fs::rename(&temporary, destination)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        fs::remove_file(&temporary).ok();
+    }
+    result
 }
 
 fn restore_archive(archive_path: &Path, destination: &Path) -> Fallible {
