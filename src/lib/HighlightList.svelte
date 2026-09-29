@@ -53,14 +53,14 @@
       <h3 class="px-4 py-2 text-sm font-semibold">{section.label}</h3>
       <ul>
         {#each section.highlights as highlight (highlight.id)}
-          <li class="flex items-start gap-1 px-4 py-3 hover:bg-base-200">
-            <button class="flex min-w-0 flex-1 flex-col gap-2 text-left" onclick={() => onJump(highlight)}>
-              <span class="text-sm"><span style:background-color={`rgba(${highlightColors[highlight.color].join(",")}, 0.35)`}>{(highlight.textFurigana ?? highlight.text).trim()}</span></span>
+          <li class="relative px-4 py-3 hover:bg-base-200">
+            <button class="flex w-full flex-col gap-2 text-left" onclick={() => onJump(highlight)}>
+              <span class="pr-7 text-sm"><span style:background-color={`rgba(${highlightColors[highlight.color].join(",")}, 0.35)`}>{(highlight.textFurigana ?? highlight.text).trim()}</span></span>
               <span class="flex w-full justify-between gap-2 text-xs text-base-content/60">
                 <span>{dateLabel(highlight.createdAt)}</span><span>{highlight.character}</span>
               </span>
             </button>
-            <button class="btn btn-ghost btn-xs btn-square text-base-content/50 hover:text-error" title="Delete" onclick={() => onDelete(highlight)}><Trash2 class="size-3.5" /></button>
+            <button class="btn btn-ghost btn-xs btn-square absolute top-3 right-4 text-base-content/50 hover:text-error" title="Delete" onclick={() => onDelete(highlight)}><Trash2 class="size-3.5" /></button>
           </li>
         {/each}
       </ul>
