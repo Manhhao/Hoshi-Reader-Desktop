@@ -2000,7 +2000,7 @@
           <SasayakiSettings compact />
 
           <div class="mt-auto flex gap-2">
-            <button class="btn btn-outline btn-sm flex-1" disabled={!sasayaki.hasMatch} onclick={loadSasayakiAudio}>
+            <button class="btn btn-outline btn-sm flex-1" onclick={loadSasayakiAudio}>
               <Upload class="size-4" />
               Load Audio
             </button>

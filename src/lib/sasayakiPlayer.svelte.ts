@@ -222,7 +222,7 @@ export class SasayakiPlayer {
   }
 
   restoreAudio() {
-    if (!this.hasMatch || !this.playback.audioPath) return;
+    if (!this.playback.audioPath) return;
     this.setupPlayer();
   }
 
