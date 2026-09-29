@@ -43,6 +43,19 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     .await
     .ok();
     update.install(bytes).map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.ancestors().nth(3).map(|path| path.to_path_buf()))
+    {
+        std::process::Command::new("open")
+            .arg("-n")
+            .arg(bundle)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        app.exit(0);
+        return Ok(());
+    }
     app.request_restart();
     Ok(())
 }
