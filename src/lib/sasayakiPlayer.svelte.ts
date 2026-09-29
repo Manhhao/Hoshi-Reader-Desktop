@@ -101,6 +101,7 @@ export class SasayakiPlayer {
   private chapterTransition = true;
   private shouldResume = false;
   private hasPlayedOnce = false;
+  private wakeLock: WakeLockSentinel | null = null;
 
   constructor(
     private id: string,
@@ -108,7 +109,39 @@ export class SasayakiPlayer {
     private loadChapter: (index: number) => void,
     private getCurrentIndex: () => number,
     private nowPlaying: NowPlaying,
-  ) {}
+  ) {
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+  }
+
+  dispose() {
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    this.teardown();
+  }
+
+  private onVisibilityChange = () => {
+    if (document.visibilityState === "visible" && this.isPlaying) this.acquireWakeLock();
+  };
+
+  private async acquireWakeLock() {
+    if (this.wakeLock || document.visibilityState !== "visible") return;
+    try {
+      const lock = await navigator.wakeLock?.request("screen");
+      if (!lock) return;
+      if (!this.isPlaying) {
+        lock.release().catch(() => {});
+        return;
+      }
+      lock.addEventListener("release", () => {
+        if (this.wakeLock === lock) this.wakeLock = null;
+      });
+      this.wakeLock = lock;
+    } catch {}
+  }
+
+  private releaseWakeLock() {
+    this.wakeLock?.release().catch(() => {});
+    this.wakeLock = null;
+  }
 
   get hasMatch() {
     return this.matchData !== null;
@@ -354,6 +387,7 @@ export class SasayakiPlayer {
   }
 
   teardown() {
+    this.releaseWakeLock();
     this.cancelImagePause();
     clearInterval(this.ticker);
     this.ticker = 0;
@@ -386,6 +420,7 @@ export class SasayakiPlayer {
     audio.addEventListener("ended", () => {
       this.stopPlaybackTime = null;
       this.isPlaying = false;
+      this.releaseWakeLock();
       clearInterval(this.ticker);
     });
     audio.addEventListener("error", () => {
@@ -449,6 +484,7 @@ export class SasayakiPlayer {
     this.audio.play().catch(() => {});
     this.isPlaying = true;
     this.hasPlayedOnce = true;
+    this.acquireWakeLock();
     clearInterval(this.ticker);
     this.ticker = window.setInterval(() => this.tick(this.audio?.currentTime ?? 0), 125);
   }
@@ -457,6 +493,7 @@ export class SasayakiPlayer {
     if (!this.audio) return;
     this.audio.pause();
     this.isPlaying = false;
+    this.releaseWakeLock();
     clearInterval(this.ticker);
     this.ticker = 0;
   }

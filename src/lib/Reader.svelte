@@ -1262,7 +1262,7 @@
       stats.flushStats();
       clearTimeout(settleTimer);
       clearTimeout(frameCleanupTimer);
-      sasayaki?.teardown();
+      sasayaki?.dispose();
       if (fullscreen) getCurrentWindow().setFullscreen(false);
     };
   });
