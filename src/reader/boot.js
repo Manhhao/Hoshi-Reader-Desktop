@@ -55,6 +55,7 @@
   let position = 0;
   let restored = false;
   let readerHotkeys = [];
+  const mouseHotkeyTokens = { 1: "Mouse:Middle", 2: "Mouse:Right", 3: "Mouse:Back", 4: "Mouse:Forward" };
 
   if (fontName && fontFile) {
     const fontStyle = document.createElement("style");
@@ -338,7 +339,11 @@
     );
     if (!onSelection) {
       window.hoshiSelection.clearSelection();
-      parent.postMessage({ hoshi: "press" }, "*");
+      if (readerHotkeys.includes("Mouse:Right")) {
+        parent.postMessage({ hoshi: "reader-hotkey", key: "Mouse:Right" }, "*");
+      } else {
+        parent.postMessage({ hoshi: "press" }, "*");
+      }
       return;
     }
     highlightRange = range.cloneRange();
@@ -407,6 +412,12 @@
   let mouseDownAt = null;
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
+    const token = mouseHotkeyTokens[e.button];
+    if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) {
+      e.preventDefault();
+      parent.postMessage({ hoshi: "reader-hotkey", key: token }, "*");
+      return;
+    }
     if (e.button !== 0 || (mac && e.ctrlKey)) {
       if (!window.getSelection().isCollapsed) e.preventDefault();
       return;
@@ -415,6 +426,10 @@
     if (clickAdvance && e.detail > 1) e.preventDefault();
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
+  });
+  document.addEventListener("auxclick", (e) => {
+    const token = mouseHotkeyTokens[e.button];
+    if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
   });
   document.addEventListener("click", (e) => {
     if (mac && e.ctrlKey) return;

@@ -49,6 +49,7 @@
   import {
     hotkeyConfig,
     hotkeyLabel,
+    mouseButtonTokens,
     normalizeHotkey,
     readerHotkeys,
     saveHotkeyConfig,
@@ -174,6 +175,25 @@
     const key = e.key === "Escape" ? "" : normalizeHotkey(e.key);
     const conflict = [{ key: "scanModifier" as const, label: "Scan Modifier" }, ...readerHotkeys]
       .find((binding) => key && binding.key !== bindingKey && hotkeyConfig[binding.key] === key);
+    if (conflict) {
+      bindingError = `Already used by ${conflict.label}.`;
+      return;
+    }
+    hotkeyConfig[bindingKey] = key;
+    saveHotkeyConfig();
+    bindingKey = null;
+    bindingError = "";
+  }
+
+  function onBindMouse(e: MouseEvent) {
+    if (!bindingKey || bindingKey === "scanModifier" || e.button === 0) return;
+    const key = mouseButtonTokens[e.button];
+    if (!key) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const conflict = readerHotkeys.find(
+      (binding) => binding.key !== bindingKey && hotkeyConfig[binding.key] === key,
+    );
     if (conflict) {
       bindingError = `Already used by ${conflict.label}.`;
       return;
@@ -735,7 +755,11 @@
   </div>
 {/snippet}
 
-<svelte:window onkeydowncapture={onBindKeydown} />
+<svelte:window
+  onkeydowncapture={onBindKeydown}
+  onmousedowncapture={onBindMouse}
+  oncontextmenucapture={(e) => bindingKey && e.preventDefault()}
+/>
 
 <div class="flex h-full flex-col bg-base-100">
   <PageHeader title={tabLabel} />
