@@ -329,8 +329,19 @@
   document.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-    highlightRange = selection.getRangeAt(0).cloneRange();
+    const range = selection && !selection.isCollapsed && !window.hoshiSelection.selection
+      ? selection.getRangeAt(0)
+      : null;
+    const onSelection = range && [...range.getClientRects()].some((rect) =>
+      e.clientX >= rect.left - 4 && e.clientX <= rect.right + 4 &&
+      e.clientY >= rect.top - 4 && e.clientY <= rect.bottom + 4,
+    );
+    if (!onSelection) {
+      window.hoshiSelection.clearSelection();
+      parent.postMessage({ hoshi: "press" }, "*");
+      return;
+    }
+    highlightRange = range.cloneRange();
     parent.postMessage({ hoshi: "selection-menu" }, "*");
   });
 
