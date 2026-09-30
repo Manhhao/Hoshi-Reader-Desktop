@@ -374,7 +374,10 @@ export class SasayakiPlayer {
 
     if (!cues.length) return;
     const first = cues.reduce((a, b) => (b.startTime < a.startTime ? b : a));
-    const end = Math.max(...cues.map((cue) => cue.endTime));
+    const last = cues.reduce((a, b) => (b.startTime < a.startTime ? a : b));
+    let end = Math.max(...cues.map((cue) => cue.endTime));
+    const next = this.timeline.nextCue(last.startTime);
+    if (next !== null) end = Math.min(end, Math.max(next - 0.02, last.startTime));
 
     let start = first.startTime;
     const prev = this.timeline.cueBefore(first.startTime);
