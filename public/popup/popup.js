@@ -1436,8 +1436,9 @@ async function fetchAudioUrl(expression, reading) {
 }
 
 async function fetchAudioList(entryIndex) {
-    if (audioLists[entryIndex]) {
-        return audioLists[entryIndex];
+    const cache = audioLists;
+    if (cache[entryIndex]) {
+        return cache[entryIndex];
     }
     const entry = window.lookupEntries?.[entryIndex];
     const sources = window.audioSources;
@@ -1459,7 +1460,7 @@ async function fetchAudioList(entryIndex) {
             });
         }
     }
-    audioLists[entryIndex] = list;
+    cache[entryIndex] = list;
     return list;
 }
 
