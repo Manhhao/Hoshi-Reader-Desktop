@@ -16,7 +16,12 @@ use crate::library;
 use crate::local_audio;
 use crate::sasayaki;
 
-static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
+static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .pool_max_idle_per_host(0)
+        .build()
+        .unwrap()
+});
 
 #[derive(Default)]
 pub struct AnkiState {
