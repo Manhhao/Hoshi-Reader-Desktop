@@ -488,8 +488,10 @@
     try {
       anki = await invoke<AnkiSettings>("anki_fetch");
       ankiReachable = true;
-    } catch {
+      ankiError = "";
+    } catch (err) {
       ankiReachable = false;
+      ankiError = String(err);
     }
   }
 

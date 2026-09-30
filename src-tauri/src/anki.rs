@@ -185,14 +185,15 @@ async fn anki_request_timeout(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let json: Value = serde_json::from_str(&text).map_err(|e| format!("{e}: {text}"))?;
 
     if let Some(err) = json.get("error").and_then(|e| e.as_str())
         && !err.is_empty()
     {
         return Err(err.to_string());
     }
-    Ok(json.get("result").cloned().unwrap_or(Value::Null))
+    Ok(json.get("result").cloned().unwrap_or(json))
 }
 
 async fn anki_request(config: &AnkiConfig, action: &str, params: Value) -> Result<Value, String> {
@@ -694,22 +695,21 @@ pub fn anki_autofill_fields(app: AppHandle, format_id: String) -> AnkiConfig {
     config
 }
 
+fn parse_result<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, String> {
+    serde_json::from_value(value.clone()).map_err(|e| format!("{e}: {value}"))
+}
+
 async fn fetch_decks_and_note_types(
     config: &AnkiConfig,
 ) -> Result<(Vec<String>, Vec<NoteType>), String> {
-    let decks: Vec<String> =
-        serde_json::from_value(anki_request(config, "deckNames", Value::Null).await?)
-            .map_err(|e| e.to_string())?;
-    let models: Vec<String> =
-        serde_json::from_value(anki_request(config, "modelNames", Value::Null).await?)
-            .map_err(|e| e.to_string())?;
+    let decks: Vec<String> = parse_result(anki_request(config, "deckNames", Value::Null).await?)?;
+    let models: Vec<String> = parse_result(anki_request(config, "modelNames", Value::Null).await?)?;
 
     let mut note_types = Vec::new();
     for model in models {
-        let fields: Vec<String> = serde_json::from_value(
+        let fields: Vec<String> = parse_result(
             anki_request(config, "modelFieldNames", json!({ "modelName": model })).await?,
-        )
-        .map_err(|e| e.to_string())?;
+        )?;
         note_types.push(NoteType {
             name: model,
             fields,
