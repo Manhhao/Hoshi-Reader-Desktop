@@ -20,7 +20,7 @@ Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [
 
 ## Download
 
-[![Download](https://img.shields.io/github/v/release/Manhhao/Hoshi-Reader-Desktop?label=Download&style=for-the-badge&logo=github&color=7BACEC)](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest)
+[![Download](https://img.shields.io/github/v/release/Manhhao/Hoshi-Reader-Desktop?label=Download&style=for-the-badge&logo=github&color=5283f7)](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest)
 
 Download the `.dmg` for macOS 15+ (Apple Silicon) or the `-setup.exe` for Windows.
 
