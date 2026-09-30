@@ -67,6 +67,7 @@
       .map((shelf) => ({ name: shelf.name, count: shelfBooks(books, { kind: "shelf", name: shelf.name }).length }))
       .filter((shelf) => shelf.count > 0),
   );
+  const unshelvedCount = $derived(shelfBooks(books, { kind: "unshelved" }).length);
 
   async function refresh() {
     books = await invoke<BookMetadata[]>("list_books");
@@ -239,6 +240,9 @@
           <ul class="menu w-full gap-0.5 p-2">
             {@render sourceRow({ kind: "home" }, "Home", null)}
             {@render sourceRow({ kind: "all" }, "All Books", books.length)}
+            {#if bookShelves.length > 0}
+              {@render sourceRow({ kind: "unshelved" }, "Unshelved", unshelvedCount)}
+            {/if}
             {#if bookShelves.length > 0}
               <li class="menu-title text-[11px] font-medium uppercase tracking-wider">Shelves</li>
               {#each bookShelves as shelf (shelf.name)}

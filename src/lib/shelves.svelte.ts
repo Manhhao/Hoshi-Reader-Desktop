@@ -78,6 +78,10 @@ export function shelfBooks(books: BookMetadata[], source: ShelfSource) {
       const ids = new Set(shelves.list.find((shelf) => shelf.name === source.name)?.bookIds ?? []);
       return books.filter((book) => ids.has(book.id));
     }
+    case "unshelved": {
+      const ids = new Set(shelves.list.flatMap((shelf) => shelf.bookIds));
+      return books.filter((book) => !ids.has(book.id));
+    }
     case "author": {
       const key = authorKey(source.name);
       return books.filter((book) => book.author && authorKey(book.author) === key);
@@ -88,7 +92,8 @@ export function shelfBooks(books: BookMetadata[], source: ShelfSource) {
 }
 
 export function sourceTitle(source: ShelfSource) {
-  return "name" in source ? source.name : "All Books";
+  if ("name" in source) return source.name;
+  return source.kind === "unshelved" ? "Unshelved" : "All Books";
 }
 
 export function sameSource(a: ShelfSource, b: ShelfSource) {

@@ -31,7 +31,7 @@ export type BookShelf = {
 };
 
 export type ShelfSource =
-  | { kind: "all" | "home" }
+  | { kind: "all" | "home" | "unshelved" }
   | { kind: "shelf" | "author"; name: string };
 
 export type ChapterInfo = {
