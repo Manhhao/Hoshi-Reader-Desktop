@@ -6,13 +6,26 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 ![License](https://img.shields.io/github/license/Manhhao/Hoshi-Reader-Desktop)
 
-Desktop version of Hoshi Reader
+Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Hoshi Reader Android](https://github.com/HuangAntimony/Hoshi-Reader-Android) made using Tauri and Svelte.
 
 </div>
 
+<table>
+  <tr>
+    <td width="33%"><img src=".github/screenshots/home.png" alt="Home"></td>
+    <td width="33%"><img src=".github/screenshots/popup-sasayaki.png" alt="Dictionary popup"></td>
+    <td width="33%"><img src=".github/screenshots/shelf.png" alt="Shelf"></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src=".github/screenshots/statistics.png" alt="Statistics"></td>
+    <td width="33%"><img src=".github/screenshots/gallery.png" alt="Gallery"></td>
+    <td width="33%"><img src=".github/screenshots/dictionary.png" alt="Dictionaries"></td>
+  </tr>
+</table>
+
 ## Download
 
-Download the latest version from [GitHub Releases](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest).
+Get the latest version from [GitHub Releases](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest).
 
 Requires macOS 15 or newer on Apple Silicon, or Windows 10/11.
 
