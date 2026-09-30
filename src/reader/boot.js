@@ -41,7 +41,7 @@
   window.scanLength = Number(params.get("sl"));
   window.scanNonJapaneseText = params.get("snj") !== "0";
   const scanModifier = params.get("mod");
-  const clickLookup = params.get("cl") !== "0";
+  const clickLookup = params.get("cl");
   const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
   let scanKeyHeld = false;
   function modifierHeld(e) {
@@ -327,8 +327,7 @@
   }
 
   let highlightRange = null;
-  document.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
+  function selectionRangeAt(e) {
     const selection = window.getSelection();
     const range = selection && !selection.isCollapsed && !window.hoshiSelection.selection
       ? selection.getRangeAt(0)
@@ -337,7 +336,16 @@
       e.clientX >= rect.left - 4 && e.clientX <= rect.right + 4 &&
       e.clientY >= rect.top - 4 && e.clientY <= rect.bottom + 4,
     );
-    if (!onSelection) {
+    return onSelection ? range : null;
+  }
+  document.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const range = selectionRangeAt(e);
+    if (!range) {
+      if (clickLookup === "right") {
+        onClick(e, 2);
+        return;
+      }
       window.hoshiSelection.clearSelection();
       if (readerHotkeys.includes("Mouse:Right")) {
         parent.postMessage({ hoshi: "reader-hotkey", key: "Mouse:Right" }, "*");
@@ -418,7 +426,8 @@
       parent.postMessage({ hoshi: "reader-hotkey", key: token }, "*");
       return;
     }
-    if (e.button !== 0 || (mac && e.ctrlKey)) {
+    const secondary = e.button === 2 || (mac && e.ctrlKey);
+    if (secondary ? clickLookup !== "right" || selectionRangeAt(e) : e.button !== 0) {
       if (!window.getSelection().isCollapsed) e.preventDefault();
       return;
     }
@@ -434,11 +443,11 @@
     const token = mouseHotkeyTokens[e.button];
     if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
   });
-  document.addEventListener("click", (e) => {
-    if (mac && e.ctrlKey) return;
+  function onClick(e, button) {
     if (modifierHeld(e)) return;
+    const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (button !== (clickLookup === "right" ? 2 : 0) && !anchor) return;
     if (window.hoshiParagraph.finishTextAnimation()) return;
-    const anchor = e.target instanceof Element ? e.target.closest("a[href]") : null;
     if (anchor) {
       e.preventDefault();
       parent.postMessage({ hoshi: "link", href: anchor.href }, "*");
@@ -450,7 +459,7 @@
     ) {
       return;
     }
-    if (!clickLookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
+    if (clickLookup === "off" && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
       parent.postMessage({ hoshi: "lookup-miss" }, "*");
       return;
     }
@@ -458,6 +467,10 @@
     if (!selected) {
       parent.postMessage({ hoshi: "lookup-miss" }, "*");
     }
+  }
+  document.addEventListener("click", (e) => {
+    if (mac && e.ctrlKey) return;
+    onClick(e, 0);
   });
 
   let resizeAnchor = null;

@@ -329,7 +329,7 @@
         window.popupActionBar = popup.actionBar;
         window.popupShowClose = popup.showClose !== false;
         window.popupScanModifier = popup.scanModifier;
-        window.popupClickLookup = popup.clickLookup !== false;
+        window.popupClickLookup = popup.clickLookup;
         readerHotkeys = popup.readerHotkeys;
         refreshNav();
       }
@@ -555,7 +555,8 @@
             else goForward();
             return;
           }
-          if (e.button === 0 && !e.target.closest?.(".button-slot")) {
+          const lookupButton = window.popupClickLookup === "right" ? 2 : 0;
+          if ((e.button === 0 || e.button === lookupButton) && !e.target.closest?.(".button-slot")) {
             window.hoshiSelection?.clearSelection();
           }
           parent.postMessage({ hoshi: "popup-press" }, "*");

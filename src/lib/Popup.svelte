@@ -12,6 +12,7 @@
     SelectionRect,
   } from "./types";
   import type { DictConfig } from "./dictConfig.svelte";
+  import type { ClickLookup } from "./hotkeyConfig.svelte";
   import type { PopupPlacement } from "./popupLayout";
   import { schemeUrl } from "./scheme";
 
@@ -51,7 +52,7 @@
     scale: number;
     actionBar: boolean;
     scanModifier: string;
-    clickLookup: boolean;
+    clickLookup: ClickLookup;
     disableTransparency: boolean;
     fill?: boolean;
     placement?: PopupPlacement;

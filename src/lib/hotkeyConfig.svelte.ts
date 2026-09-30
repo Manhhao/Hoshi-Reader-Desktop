@@ -1,8 +1,10 @@
 import { persisted } from "./persisted.svelte";
 
+export type ClickLookup = "off" | "left" | "right";
+
 export type HotkeyConfig = {
   scanModifier: string;
-  clickLookup: boolean;
+  clickLookup: ClickLookup;
   disableReaderWheel: boolean;
   sasayakiPreviousCue: string;
   sasayakiNextCue: string;
@@ -12,7 +14,7 @@ export type HotkeyConfig = {
 
 const defaults: HotkeyConfig = {
   scanModifier: "Shift",
-  clickLookup: false,
+  clickLookup: "off",
   disableReaderWheel: false,
   sasayakiPreviousCue: "[",
   sasayakiNextCue: "]",
@@ -30,6 +32,8 @@ export const readerHotkeys = [
 const store = persisted<HotkeyConfig>("hotkeys.config", defaults);
 
 export const hotkeyConfig = store.config;
+const legacyClickLookup: unknown = hotkeyConfig.clickLookup;
+if (typeof legacyClickLookup === "boolean") hotkeyConfig.clickLookup = legacyClickLookup ? "left" : "off";
 export const saveHotkeyConfig = store.save;
 
 export const mouseButtonTokens: Record<number, string> = {

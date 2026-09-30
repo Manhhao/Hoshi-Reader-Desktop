@@ -2104,6 +2104,19 @@ window.renderPopup = function() {
     container.addEventListener('mousedown', (e) => {
         mouseDownAt = { x: e.clientX, y: e.clientY };
     });
+    const isLookupTarget = (target) => target?.closest('.glossary-content') || target?.closest('.expr-tag');
+    const lookupAt = (e) => {
+        if (
+            mouseDownAt &&
+            (Math.abs(e.clientX - mouseDownAt.x) > 4 || Math.abs(e.clientY - mouseDownAt.y) > 4)
+        ) {
+            return;
+        }
+        const selected = window.hoshiSelection?.selectText(e.clientX, e.clientY, window.scanLength);
+        if (!selected) {
+            webkit.messageHandlers.tapOutside.postMessage(null);
+        }
+    };
     container.addEventListener('click', (e) => {
         if (window.scanModifierHeld?.(e)) {
             return;
@@ -2121,23 +2134,21 @@ window.renderPopup = function() {
         if (target?.closest('summary')) {
             return;
         }
-        if (!target?.closest('.glossary-content') && !target?.closest('.expr-tag')) {
+        if (!isLookupTarget(target)) {
             webkit.messageHandlers.tapOutside.postMessage(null);
             return;
         }
-        if (window.popupClickLookup === false) {
+        if (window.popupClickLookup === 'left') {
+            lookupAt(e);
+        }
+    });
+    container.addEventListener('contextmenu', (e) => {
+        if (window.popupClickLookup !== 'right' || window.scanModifierHeld?.(e)) {
             return;
         }
-        if (
-            mouseDownAt &&
-            (Math.abs(e.clientX - mouseDownAt.x) > 4 || Math.abs(e.clientY - mouseDownAt.y) > 4)
-        ) {
-            return;
-        }
-        const selected = window.hoshiSelection?.selectText(e.clientX, e.clientY, window.scanLength);
-        if (!selected) {
-            webkit.messageHandlers.tapOutside.postMessage(null);
-            return;
+        const target = e.target?.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
+        if (isLookupTarget(target)) {
+            lookupAt(e);
         }
     });
 };

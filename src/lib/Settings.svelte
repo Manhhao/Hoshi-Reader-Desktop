@@ -197,6 +197,10 @@
     if (!key) return;
     e.preventDefault();
     e.stopPropagation();
+    if (key === "Mouse:Right" && hotkeyConfig.clickLookup === "right") {
+      bindingError = "Already used by Scan on Click.";
+      return;
+    }
     const conflict = readerHotkeys.find(
       (binding) => binding.key !== bindingKey && hotkeyConfig[binding.key] === key,
     );
@@ -1303,11 +1307,17 @@
               {bindingKey === "scanModifier" ? "…" : hotkeyLabel(hotkeyConfig.scanModifier)}
             </button>
           </SettingRow>
-          <SettingToggle
-            label="Scan on Left Click"
-            bind:checked={hotkeyConfig.clickLookup}
-            onchange={saveHotkeyConfig}
-          />
+          <SettingRow label="Scan on Click">
+            <select
+              class="select select-sm w-36"
+              bind:value={hotkeyConfig.clickLookup}
+              onchange={saveHotkeyConfig}
+            >
+              <option value="off">Off</option>
+              <option value="left">Left Click</option>
+              <option value="right">Right Click</option>
+            </select>
+          </SettingRow>
         </SettingsSection>
         {#each ["Sasayaki", "Reader"] as section}
           <SettingsSection title={section}>

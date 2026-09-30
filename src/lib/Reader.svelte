@@ -177,7 +177,7 @@
         `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
         `&pm=${readerConfig.paragraphMode ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
-        `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup ? 1 : 0}` +
+        `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
         `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}` +
         `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
@@ -350,11 +350,11 @@
     else sasayaki?.togglePlayback();
   }
 
-  function closePopups(keep = 0) {
+  function closePopups(keep = 0, clearSelection = true) {
     lookupSeq++;
     if (popups.length <= keep) return;
     popups = popups.slice(0, keep);
-    if (!popups.length) postToFrame({ hoshi: "clear-selection" });
+    if (!popups.length && clearSelection) postToFrame({ hoshi: "clear-selection" });
     resumeAfterPopups();
   }
 
@@ -1039,7 +1039,7 @@
         showBar = false;
         pressHeld = true;
         pressLookup = null;
-        closePopups();
+        closePopups(0, false);
         break;
       case "release":
         releasePress();
