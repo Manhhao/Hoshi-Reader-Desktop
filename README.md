@@ -9,7 +9,7 @@
 Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Hoshi Reader Android](https://github.com/HuangAntimony/Hoshi-Reader-Android), made using Tauri and Svelte.
 <p align="center">
     <img src=".github/screenshots/home.png" width="49%" alt="home">
-    <img src=".github/screenshots/popup-sasayaki.png" width="49%" alt="popup">
+    <img src=".github/screenshots/reader.png" width="49%" alt="reader">
     <img src=".github/screenshots/shelf.png" width="49%" alt="shelf">
     <img src=".github/screenshots/statistics.png" width="49%" alt="statistics">
     <img src=".github/screenshots/gallery.png" width="49%" alt="gallery">
@@ -20,9 +20,9 @@ Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [
 
 ## Download
 
-Get the latest version from [GitHub Releases](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest).
+[![Download](https://img.shields.io/github/v/release/Manhhao/Hoshi-Reader-Desktop?label=Download&style=for-the-badge&logo=github&color=7BACEC)](https://github.com/Manhhao/Hoshi-Reader-Desktop/releases/latest)
 
-Requires macOS 15 or newer on Apple Silicon, or Windows 10/11.
+Download the `.dmg` for macOS 15+ (Apple Silicon) or the `-setup.exe` for Windows.
 
 ## Features
 
@@ -63,6 +63,14 @@ pnpm tauri build --no-sign --config '{"bundle":{"createUpdaterArtifacts":false}}
 
 To enable Google Drive sync, set `HOSHI_GOOGLE_CLIENT_ID` and `HOSHI_GOOGLE_CLIENT_SECRET` from your own Google Cloud project before building.
 
+## Contributing
+
+If you're planning on contributing something significant, please open an issue or message me on Discord ([manhhao](https://discord.com/users/278886957667319808)) first.
+
+## Issues
+
+Please open an issue [here](https://github.com/Manhhao/Hoshi-Reader-Desktop/issues) or in the TMW thread.
+
 ## Libraries
 
 | Name | License |
@@ -83,10 +91,6 @@ To enable Google Drive sync, set `HOSHI_GOOGLE_CLIENT_ID` and `HOSHI_GOOGLE_CLIE
 | [Ankiconnect Android](https://github.com/KamWithK/AnkiconnectAndroid) | Implementation for local audio database | GPL-3.0 |
 | [Yomitan](https://github.com/yomidevs/yomitan) | Various code from pop-up dictionary | GPL-3.0 |
 | [@i_am_onizame](https://x.com/i_am_onizame/status/2074108413546807451) | Artwork | |
-
-## Issues
-
-Please open an issue [here](https://github.com/Manhhao/Hoshi-Reader-Desktop/issues).
 
 ## License
 
