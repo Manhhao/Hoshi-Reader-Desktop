@@ -427,6 +427,7 @@ a {
 .pitch-list {
     margin: calc(3px * var(--popup-scale)) 0 0 0;
     font-size: calc(13px * var(--popup-scale));
+    line-height: 1.5;
 }
 
 .pitch-dict-label {
