@@ -8,12 +8,12 @@
 
 Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Hoshi Reader Android](https://github.com/HuangAntimony/Hoshi-Reader-Android) made using Tauri and Svelte.
 <p align="center">
-    <img src=".github/screenshots/home.png" width="32%" alt="home">
-    <img src=".github/screenshots/popup-sasayaki.png" width="32%" alt="popup">
-    <img src=".github/screenshots/shelf.png" width="32%" alt="shelf">
-    <img src=".github/screenshots/statistics.png" width="32%" alt="statistics">
-    <img src=".github/screenshots/gallery.png" width="32%" alt="gallery">
-    <img src=".github/screenshots/dictionary.png" width="32%" alt="dictionary">
+    <img src=".github/screenshots/home.png" width="49%" alt="home">
+    <img src=".github/screenshots/popup-sasayaki.png" width="49%" alt="popup">
+    <img src=".github/screenshots/shelf.png" width="49%" alt="shelf">
+    <img src=".github/screenshots/statistics.png" width="49%" alt="statistics">
+    <img src=".github/screenshots/gallery.png" width="49%" alt="gallery">
+    <img src=".github/screenshots/dictionary.png" width="49%" alt="dictionary">
 </p>
 
 </div>
