@@ -60,6 +60,14 @@ pub enum DuplicateScope {
     Deckroot,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SasayakiAudioFormat {
+    #[default]
+    Mp3,
+    Opus,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioSource {
@@ -241,6 +249,8 @@ pub struct MiningContext {
     pub book_id: Option<String>,
     #[serde(default)]
     pub sasayaki_cue: Option<String>,
+    #[serde(default)]
+    pub sasayaki_audio_format: SasayakiAudioFormat,
 }
 
 #[derive(Deserialize)]
@@ -879,15 +889,20 @@ pub async fn anki_mine(
         let book_id = book_id.clone();
         let cue_id = cue_id.clone();
         let sentence = context.sentence.clone();
+        let format = context.sasayaki_audio_format;
         let bytes = tauri::async_runtime::spawn_blocking(move || {
-            sasayaki::cue_sentence_audio(&app_clone, &book_id, &cue_id, &sentence)
+            sasayaki::cue_sentence_audio(&app_clone, &book_id, &cue_id, &sentence, format)
         })
         .await
         .ok()
         .flatten();
         if let Some(bytes) = bytes {
             let data = base64(&bytes);
-            let filename = format!("hoshi_sasayaki_{}.mp3", sha1_hex(&bytes));
+            let extension = match format {
+                SasayakiAudioFormat::Mp3 => "mp3",
+                SasayakiAudioFormat::Opus => "ogg",
+            };
+            let filename = format!("hoshi_sasayaki_{}.{extension}", sha1_hex(&bytes));
             audio_media.push(
                 json!({ "data": data, "filename": filename, "fields": sasayaki_audio_fields }),
             );

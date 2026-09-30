@@ -80,6 +80,9 @@ Please open an issue [here](https://github.com/Manhhao/Hoshi-Reader-Desktop/issu
 | [Svelte](https://github.com/sveltejs/svelte) | MIT |
 | [rbook](https://github.com/DevinSterling/rbook) | Apache-2.0 |
 | [mp3lame-encoder](https://github.com/DoumanAsh/mp3lame-encoder) | LGPL-3.0 |
+| [opus](https://github.com/SpaceManiac/opus-rs) | MIT / Apache-2.0 |
+| [ogg](https://github.com/RustAudio/ogg) | BSD-3-Clause |
+| [rubato](https://github.com/HEnquist/rubato) | MIT / Apache-2.0 |
 | [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) | MIT |
 | [daisyUI](https://github.com/saadeghi/daisyui) | MIT |
 | [Lucide](https://github.com/lucide-icons/lucide) | ISC |

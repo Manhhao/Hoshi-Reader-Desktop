@@ -132,6 +132,14 @@
   <SettingsSection title="Settings">{@render settings()}</SettingsSection>
   <SettingsSection title="Paragraph Mode">{@render paragraphMode()}</SettingsSection>
   <SettingsSection title="Control Bar">{@render controlBar()}</SettingsSection>
+  <SettingsSection title="Anki">
+    <SettingRow label="Audio Format">
+      <select class="select select-sm w-28" bind:value={sasayakiConfig.sasayakiAudioFormat} onchange={saveSasayakiConfig}>
+        <option value="mp3">MP3</option>
+        <option value="opus">Opus</option>
+      </select>
+    </SettingRow>
+  </SettingsSection>
   {#each themes as [title, text, background] (title)}
     <SettingsSection {title}>{@render colors(text, background)}</SettingsSection>
   {/each}

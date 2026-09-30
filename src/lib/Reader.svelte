@@ -492,6 +492,7 @@
         documentTitle: title,
         bookId: id,
         sasayakiCue: popup.sasayakiCue?.id ?? null,
+        sasayakiAudioFormat: sasayakiConfig.sasayakiAudioFormat,
       },
       slotIndex: Number(content.slotIndex) || 0,
     });

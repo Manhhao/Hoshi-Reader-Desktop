@@ -103,6 +103,24 @@ export const aboutLicenses = [
         "license": "LGPL-3.0",
         "url": "https://github.com/DoumanAsh/mp3lame-encoder",
         "text": null
+      },
+      {
+        "name": "opus",
+        "license": "MIT OR Apache-2.0",
+        "url": "https://github.com/SpaceManiac/opus-rs",
+        "text": null
+      },
+      {
+        "name": "ogg",
+        "license": "BSD-3-Clause",
+        "url": "https://github.com/RustAudio/ogg",
+        "text": null
+      },
+      {
+        "name": "rubato",
+        "license": "MIT OR Apache-2.0",
+        "url": "https://github.com/HEnquist/rubato",
+        "text": null
       }
     ]
   },

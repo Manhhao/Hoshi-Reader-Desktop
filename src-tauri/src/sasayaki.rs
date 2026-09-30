@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri::http::{Request, Response, header::CONTENT_TYPE};
 
+use crate::anki::SasayakiAudioFormat;
 use crate::library;
 
 const MATCH_FILE: &str = "sasayaki_match.json";
@@ -617,6 +618,7 @@ pub fn cue_sentence_audio(
     id: &str,
     cue_id: &str,
     sentence: &str,
+    format: SasayakiAudioFormat,
 ) -> Option<Vec<u8>> {
     let data = load_match(app, id)?;
     let cue = data.matches.iter().find(|item| item.id == cue_id)?;
@@ -626,7 +628,7 @@ pub fn cue_sentence_audio(
     let range = expand_cue(&data, cue, sentence);
     let start = (range.0 + playback.delay).max(0.0);
     let end = (range.1 + playback.delay).max(start);
-    encode_clip(&path, start, end)
+    encode_clip(&path, start, end, format)
 }
 
 pub(crate) fn audio_cover(path: &Path) -> Option<(&'static str, Vec<u8>)> {
@@ -699,13 +701,23 @@ fn id3_cover(file: &mut File) -> Option<Vec<u8>> {
     None
 }
 
-fn encode_clip(path: &Path, start: f64, end: f64) -> Option<Vec<u8>> {
-    let (samples, rate, channels) = crate::pcm::decode(path, start, end, audio_mime(path))?;
+fn encode_clip(path: &Path, start: f64, end: f64, format: SasayakiAudioFormat) -> Option<Vec<u8>> {
+    let (mut samples, rate, mut channels) = crate::pcm::decode(path, start, end, audio_mime(path))?;
     if channels == 0 || channels > 2 || samples.is_empty() {
         return None;
     }
+    if channels == 2 && samples.chunks_exact(2).all(|frame| frame[0] == frame[1]) {
+        samples = samples.into_iter().step_by(2).collect();
+        channels = 1;
+    }
+    match format {
+        SasayakiAudioFormat::Mp3 => encode_mp3(&samples, rate, channels),
+        SasayakiAudioFormat::Opus => encode_opus(&samples, rate, channels),
+    }
+}
 
-    use mp3lame_encoder::{Builder, FlushNoGap, InterleavedPcm, Quality, VbrMode};
+fn encode_mp3(samples: &[i16], rate: u32, channels: usize) -> Option<Vec<u8>> {
+    use mp3lame_encoder::{Builder, FlushGap, InterleavedPcm, MonoPcm, Quality, VbrMode};
     let mut builder = Builder::new()?;
     builder.set_num_channels(channels as u8).ok()?;
     builder.set_sample_rate(rate).ok()?;
@@ -716,14 +728,95 @@ fn encode_clip(path: &Path, start: f64, end: f64) -> Option<Vec<u8>> {
     let mut encoder = builder.build().ok()?;
 
     let mut mp3 = Vec::with_capacity(mp3lame_encoder::max_required_buffer_size(samples.len()));
-    encoder
-        .encode_to_vec(InterleavedPcm(&samples), &mut mp3)
-        .ok()?;
-    encoder.flush_to_vec::<FlushNoGap>(&mut mp3).ok()?;
+    if channels == 1 {
+        encoder.encode_to_vec(MonoPcm(samples), &mut mp3).ok()?;
+    } else {
+        encoder
+            .encode_to_vec(InterleavedPcm(samples), &mut mp3)
+            .ok()?;
+    }
+    encoder.flush_to_vec::<FlushGap>(&mut mp3).ok()?;
 
     let mut tag = Vec::with_capacity(encoder.lame_tag_size());
     if encoder.lame_tag_encode_to_vec(&mut tag).is_some() && tag.len() <= mp3.len() {
         mp3[..tag.len()].copy_from_slice(&tag);
     }
     Some(mp3)
+}
+
+fn encode_opus(samples: &[i16], rate: u32, channels: usize) -> Option<Vec<u8>> {
+    use ogg::{PacketWriteEndInfo, PacketWriter};
+    use rubato::audioadapter_buffers::direct::InterleavedSlice;
+    use rubato::{Fft, FixedSync, Resampler};
+
+    const OPUS_RATE: u32 = 48000;
+    const FRAME: usize = 960;
+
+    let mut pcm: Vec<f32> = samples
+        .iter()
+        .map(|&sample| sample as f32 / 32768.0)
+        .collect();
+    if rate != OPUS_RATE {
+        let frames = pcm.len() / channels;
+        let input = InterleavedSlice::new(&pcm[..], channels, frames).ok()?;
+        let mut resampler = Fft::<f32>::new(
+            rate as usize,
+            OPUS_RATE as usize,
+            1024,
+            channels,
+            FixedSync::Input,
+        )
+        .ok()?;
+        pcm = resampler
+            .process_all(&input, frames, None)
+            .ok()?
+            .take_data();
+    }
+
+    let mode = if channels == 1 {
+        opus::Channels::Mono
+    } else {
+        opus::Channels::Stereo
+    };
+    let mut encoder = opus::Encoder::new(OPUS_RATE, mode, opus::Application::Audio).ok()?;
+    let pre_skip = encoder.get_lookahead().ok()? as usize;
+    let length = pcm.len() / channels;
+    let total = (length + pre_skip).div_ceil(FRAME) * FRAME;
+    pcm.resize(total * channels, 0.0);
+
+    let mut head = b"OpusHead\x01".to_vec();
+    head.push(channels as u8);
+    head.extend((pre_skip as u16).to_le_bytes());
+    head.extend(rate.to_le_bytes());
+    head.extend([0, 0, 0]);
+
+    let vendor = b"Hoshi Reader";
+    let mut tags = b"OpusTags".to_vec();
+    tags.extend((vendor.len() as u32).to_le_bytes());
+    tags.extend(vendor);
+    tags.extend(0u32.to_le_bytes());
+
+    let mut writer = PacketWriter::new(Vec::new());
+    writer
+        .write_packet(head, 0, PacketWriteEndInfo::EndPage, 0)
+        .ok()?;
+    writer
+        .write_packet(tags, 0, PacketWriteEndInfo::EndPage, 0)
+        .ok()?;
+
+    let mut packet = vec![0u8; 4000];
+    for (index, frame) in pcm.chunks(FRAME * channels).enumerate() {
+        let len = encoder.encode_float(frame, &mut packet).ok()?;
+        let position = (index + 1) * FRAME;
+        let info = if position == total {
+            PacketWriteEndInfo::EndStream
+        } else {
+            PacketWriteEndInfo::NormalPacket
+        };
+        let granule = position.min(pre_skip + length) as u64;
+        writer
+            .write_packet(packet[..len].to_vec(), 0, info, granule)
+            .ok()?;
+    }
+    Some(writer.into_inner())
 }

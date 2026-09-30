@@ -42,6 +42,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 tokio-util = "0.7"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
+opus = "0.4"
+ogg = "0.9"
+rubato = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
