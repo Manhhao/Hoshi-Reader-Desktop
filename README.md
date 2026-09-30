@@ -7,21 +7,16 @@
 ![License](https://img.shields.io/github/license/Manhhao/Hoshi-Reader-Desktop)
 
 Desktop version of [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Hoshi Reader Android](https://github.com/HuangAntimony/Hoshi-Reader-Android) made using Tauri and Svelte.
+<p align="center">
+    <img src=".github/screenshots/home.png" width="32%" alt="home">
+    <img src=".github/screenshots/popup-sasayaki.png" width="32%" alt="popup">
+    <img src=".github/screenshots/shelf.png" width="32%" alt="shelf">
+    <img src=".github/screenshots/statistics.png" width="32%" alt="statistics">
+    <img src=".github/screenshots/gallery.png" width="32%" alt="gallery">
+    <img src=".github/screenshots/dictionary.png" width="32%" alt="dictionary">
+</p>
 
 </div>
-
-<table>
-  <tr>
-    <td width="33%"><img src=".github/screenshots/home.png" alt="Home"></td>
-    <td width="33%"><img src=".github/screenshots/popup-sasayaki.png" alt="Dictionary popup"></td>
-    <td width="33%"><img src=".github/screenshots/shelf.png" alt="Shelf"></td>
-  </tr>
-  <tr>
-    <td width="33%"><img src=".github/screenshots/statistics.png" alt="Statistics"></td>
-    <td width="33%"><img src=".github/screenshots/gallery.png" alt="Gallery"></td>
-    <td width="33%"><img src=".github/screenshots/dictionary.png" alt="Dictionaries"></td>
-  </tr>
-</table>
 
 ## Download
 
