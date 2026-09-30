@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,8 @@ pub struct SyncStatus {
     pub is_syncing: bool,
     pub error_message: Option<String>,
 }
+
+type Folders = HashMap<(String, i64), String>;
 
 static SHARED: LazyLock<Mutex<GoogleDriveSyncManager>> =
     LazyLock::new(|| Mutex::new(GoogleDriveSyncManager::default()));
@@ -319,23 +321,29 @@ async fn run_sync(book: Option<BookMetadata>) -> SyncResult<()> {
         }
 
         let key: String = book.folder.nfc().collect();
-        sync_book(&key).await?;
+        sync_book(&key, None).await?;
         return Ok(());
     }
 
-    let (changed, cursor) = changes().await?;
-    let pending: HashSet<String> = store()
+    let (mut remote, listed, cursor) = changes().await?;
+    let pending: Vec<String> = store()
         .state
         .books
         .iter()
         .filter(|(_, record)| record.pending)
         .map(|(key, _)| key.clone())
         .collect();
-    let keys: HashSet<String> = changed.union(&pending).cloned().collect();
-    let mut sorted: Vec<&String> = keys.iter().filter(|key| *key != ".shelves").collect();
-    sorted.sort();
-    for key in sorted {
-        sync_book(key).await?;
+    for key in pending {
+        remote.entry(key).or_insert_with(|| listed.then(Vec::new));
+    }
+    let shelves_changed = remote.contains_key(".shelves");
+    let mut sorted: Vec<(String, Option<Vec<GoogleDriveFile>>)> = remote
+        .into_iter()
+        .filter(|(key, _)| key != ".shelves")
+        .collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    for (key, files) in sorted {
+        sync_book(&key, files).await?;
     }
     let unattached = store()
         .state
@@ -343,7 +351,7 @@ async fn run_sync(book: Option<BookMetadata>) -> SyncResult<()> {
         .values()
         .any(|record| !record.attached && !record.deleted);
     if !unattached {
-        if keys.contains(".shelves") || store().state.shelves_pending {
+        if shelves_changed || store().state.shelves_pending {
             sync_shelves().await?;
         }
         shared().cache.cursor = Some(cursor);
@@ -380,6 +388,7 @@ pub fn start_file_sync() {
 }
 
 async fn run_file_sync() {
+    let mut folders = HashMap::new();
     let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
     keys.sort();
     for key in keys {
@@ -389,9 +398,9 @@ async fn run_file_sync() {
 
         for file_type in SyncFileType::ALL_CASES {
             let result = async {
-                upload_file(&key, file_type).await?;
+                upload_file(&key, file_type, &mut folders).await?;
                 if file_type != SyncFileType::Epub {
-                    download_file(&key, file_type, &|_| {}).await?;
+                    download_file(&key, file_type, &|_| {}, &mut folders).await?;
                 }
                 SyncResult::Ok(())
             }
@@ -403,7 +412,7 @@ async fn run_file_sync() {
             }
         }
 
-        if let Err(error) = cleanup_files(&key).await
+        if let Err(error) = cleanup_files(&key, &mut folders).await
             && stops_file_sync(&error)
         {
             return;
@@ -462,7 +471,7 @@ pub async fn download_book(
         .and_then(|record| record.files.get(&SyncFileType::Epub))
         .is_some_and(|file| file.value.is_some());
     if enabled() && has_epub {
-        download_file(&key, SyncFileType::Epub, on_progress).await?;
+        download_file(&key, SyncFileType::Epub, on_progress, &mut HashMap::new()).await?;
     }
 
     task::check_cancellation()?;
@@ -476,14 +485,21 @@ pub async fn download_book(
     Ok(metadata)
 }
 
-async fn changes() -> SyncResult<(HashSet<String>, String)> {
-    let mut keys: HashSet<String> = HashSet::new();
+async fn changes() -> SyncResult<(HashMap<String, Option<Vec<GoogleDriveFile>>>, bool, String)> {
+    let mut keys: HashMap<String, Option<Vec<GoogleDriveFile>>> = HashMap::new();
+    let mut listed = false;
     let saved = shared().cache.cursor.clone();
     let mut cursor = match saved {
         Some(saved) => saved,
         None => {
             let cursor = drive::start_token().await?;
-            keys = list_remote().await?;
+            keys.extend(
+                list_remote()
+                    .await?
+                    .into_iter()
+                    .map(|(key, files)| (key, Some(files))),
+            );
+            listed = true;
             cursor
         }
     };
@@ -501,26 +517,32 @@ async fn changes() -> SyncResult<(HashSet<String>, String)> {
                             .is_some_and(|parents| parents.contains(&root)))
             })
         }) {
-            keys.extend(list_remote().await?);
+            for (key, files) in list_remote().await? {
+                keys.entry(key).or_insert(Some(files));
+            }
+            listed = true;
         }
         let state_folder = state_folder();
-        keys.extend(
-            page.changes
-                .iter()
-                .filter(|change| !change.removed)
-                .filter_map(|change| change.file.as_ref())
-                .filter(|file| {
-                    file.trashed != Some(true)
-                        && file
-                            .parents
-                            .as_ref()
-                            .is_some_and(|parents| parents.contains(&state_folder))
-                })
-                .filter_map(|file| file.state_key()),
-        );
+        let changed: Vec<String> = page
+            .changes
+            .iter()
+            .filter(|change| !change.removed)
+            .filter_map(|change| change.file.as_ref())
+            .filter(|file| {
+                file.trashed != Some(true)
+                    && file
+                        .parents
+                        .as_ref()
+                        .is_some_and(|parents| parents.contains(&state_folder))
+            })
+            .filter_map(|file| file.state_key())
+            .collect();
+        for key in changed {
+            keys.insert(key, None);
+        }
         match page.next_page_token {
             Some(next) => cursor = next,
-            None => return Ok((keys, page.new_start_page_token.unwrap())),
+            None => return Ok((keys, listed, page.new_start_page_token.unwrap())),
         }
     }
 }
@@ -535,15 +557,18 @@ async fn load_layout() -> SyncResult<()> {
     Ok(())
 }
 
-async fn list_remote() -> SyncResult<HashSet<String>> {
+async fn list_remote() -> SyncResult<HashMap<String, Vec<GoogleDriveFile>>> {
     load_layout().await?;
     let state_folder = shared().cache.state_folder.clone();
     let files = drive::children(&state_folder, None).await?;
     task::check_cancellation()?;
-    Ok(files
-        .iter()
-        .filter_map(GoogleDriveFile::state_key)
-        .collect())
+    let mut grouped: HashMap<String, Vec<GoogleDriveFile>> = HashMap::new();
+    for file in files {
+        if let Some(key) = file.state_key() {
+            grouped.entry(key).or_default().push(file);
+        }
+    }
+    Ok(grouped)
 }
 
 fn state_folder() -> String {
@@ -554,8 +579,11 @@ fn book_folder() -> String {
     shared().cache.book_folder.clone()
 }
 
-async fn sync_book(key: &str) -> SyncResult<()> {
-    let files = drive::children(&state_folder(), Some(&format!("{key}.json"))).await?;
+async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResult<()> {
+    let files = match listed {
+        Some(files) => files,
+        None => drive::children(&state_folder(), Some(&format!("{key}.json"))).await?,
+    };
     task::check_cancellation()?;
 
     let mut versions: HashMap<String, String> = files
@@ -711,7 +739,7 @@ async fn sync_shelves() -> SyncResult<()> {
     store.save()
 }
 
-async fn upload_file(key: &str, file_type: SyncFileType) -> SyncResult<()> {
+async fn upload_file(key: &str, file_type: SyncFileType, folders: &mut Folders) -> SyncResult<()> {
     let record = store().state.books[key].clone();
     if !record.attached || (record.deleted && file_type != SyncFileType::Cover) {
         return Ok(());
@@ -759,7 +787,7 @@ async fn upload_file(key: &str, file_type: SyncFileType) -> SyncResult<()> {
         return Ok(());
     }
 
-    let folder = drive::file_folder(&book_folder(), key, record.generation, true).await?;
+    let folder = file_folder(folders, key, record.generation, true).await?;
     drive::upload(data, &name, &folder.unwrap()).await?;
     task::check_cancellation()?;
     if !can_publish(key, file_type, source, record.generation) {
@@ -788,6 +816,23 @@ async fn upload_file(key: &str, file_type: SyncFileType) -> SyncResult<()> {
     store.save_changes(false)
 }
 
+async fn file_folder(
+    folders: &mut Folders,
+    key: &str,
+    generation: i64,
+    create: bool,
+) -> SyncResult<Option<String>> {
+    let id = (key.to_string(), generation);
+    if let Some(folder) = folders.get(&id) {
+        return Ok(Some(folder.clone()));
+    }
+    let folder = drive::file_folder(&book_folder(), key, generation, create).await?;
+    if let Some(folder) = &folder {
+        folders.insert(id, folder.clone());
+    }
+    Ok(folder)
+}
+
 fn can_publish(key: &str, file_type: SyncFileType, source: i64, generation: i64) -> bool {
     let store = store();
     let record = &store.state.books[key];
@@ -805,6 +850,7 @@ async fn download_file(
     key: &str,
     file_type: SyncFileType,
     on_progress: &(dyn Fn(f64) + Sync),
+    folders: &mut Folders,
 ) -> SyncResult<()> {
     let record = store().state.books[key].clone();
     if record.deleted && file_type != SyncFileType::Cover {
@@ -835,7 +881,7 @@ async fn download_file(
         return Ok(());
     }
 
-    let folder = drive::file_folder(&book_folder(), key, record.generation, false).await?;
+    let folder = file_folder(folders, key, record.generation, false).await?;
 
     let data = drive::download(&name, folder.as_deref(), on_progress).await?;
 
@@ -944,7 +990,7 @@ fn apply_downloaded_file(
     Ok(())
 }
 
-async fn cleanup_files(key: &str) -> SyncResult<()> {
+async fn cleanup_files(key: &str, folders: &mut Folders) -> SyncResult<()> {
     let generations: Vec<i64> = store().state.books[key].cleanup.iter().copied().collect();
     for generation in generations {
         if store().state.books[key].pending {
@@ -963,12 +1009,13 @@ async fn cleanup_files(key: &str) -> SyncResult<()> {
             return store.save_changes(false);
         }
 
-        let folder = drive::file_folder(&book_folder(), key, generation, false).await?;
+        let folder = file_folder(folders, key, generation, false).await?;
 
         let mut recent = false;
         if let Some(folder) = &folder {
             if generation < book.generation {
                 client::trash_file(folder).await?;
+                folders.remove(&(key.to_string(), generation));
                 task::check_cancellation()?;
             } else {
                 let files = drive::children(folder, None).await?;
