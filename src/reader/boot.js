@@ -446,7 +446,6 @@
   function onClick(e, button) {
     if (modifierHeld(e)) return;
     const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
-    if (button !== (clickLookup === "right" ? 2 : 0) && !anchor) return;
     if (window.hoshiParagraph.finishTextAnimation()) return;
     if (anchor) {
       e.preventDefault();
@@ -459,12 +458,13 @@
     ) {
       return;
     }
-    if (clickLookup === "off" && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
+    const lookup = button === 2 || clickLookup === "left";
+    if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
       parent.postMessage({ hoshi: "lookup-miss" }, "*");
       return;
     }
     const selected = window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
-    if (!selected) {
+    if (!selected && button === 0) {
       parent.postMessage({ hoshi: "lookup-miss" }, "*");
     }
   }
