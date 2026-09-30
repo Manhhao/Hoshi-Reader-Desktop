@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::sync::gdrive::handler as drive;
 use crate::sync::model::{
     SyncBook, SyncError, SyncFileType, SyncResult, SyncShelves, Timestamped, sync_format,
 };
-use crate::sync::storage::{self, SASAYAKI_MATCH, SyncStorage};
+use crate::sync::storage::{self, SASAYAKI_MATCH, SyncRecord, SyncStorage};
 use crate::sync::task::{self, SyncTask};
 use crate::sync::{app, auth};
 
@@ -41,6 +41,45 @@ pub struct GoogleDriveSyncManager {
     pub download_task: Option<SyncTask>,
     stopped: bool,
     unsupported_format: bool,
+    transfers: Vec<QueueItem>,
+    progress: Option<Progress>,
+    book_errors: HashMap<(String, Phase), BookError>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Phase {
+    State,
+    File,
+}
+
+struct BookError {
+    title: String,
+    message: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueItem {
+    pub key: String,
+    pub title: String,
+    pub direction: Option<Direction>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum Direction {
+    Upload,
+    Download,
+    Both,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    pub done: usize,
+    pub total: usize,
+    pub current: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -49,6 +88,57 @@ pub struct SyncStatus {
     pub last_sync: Option<i64>,
     pub is_syncing: bool,
     pub error_message: Option<String>,
+    pub queue: Vec<QueueItem>,
+    pub progress: Option<Progress>,
+}
+
+struct RemoteChanges {
+    listed: Option<HashMap<String, Vec<GoogleDriveFile>>>,
+    changed: HashSet<String>,
+    cursor: String,
+}
+
+impl RemoteChanges {
+    fn contains(&self, key: &str) -> bool {
+        self.changed.contains(key)
+            || self
+                .listed
+                .as_ref()
+                .is_some_and(|listed| listed.contains_key(key))
+    }
+
+    fn files(&self, key: &str) -> Option<Vec<GoogleDriveFile>> {
+        if self.changed.contains(key) {
+            return None;
+        }
+        self.listed
+            .as_ref()
+            .map(|listed| listed.get(key).cloned().unwrap_or_default())
+    }
+}
+
+fn record_book(key: &str, phase: Phase, result: SyncResult<()>) -> SyncResult<()> {
+    let Err(error) = result else {
+        shared().book_errors.remove(&(key.to_string(), phase));
+        return Ok(());
+    };
+    if task::is_cancelled() || error.stops_run() {
+        return Err(error);
+    }
+    let deleted = store()
+        .state
+        .books
+        .get(key)
+        .is_some_and(|record| record.deleted);
+    let title = book_title(key, deleted);
+    shared().book_errors.insert(
+        (key.to_string(), phase),
+        BookError {
+            title,
+            message: error.to_string(),
+        },
+    );
+    Ok(())
 }
 
 type Folders = HashMap<(String, i64), String>;
@@ -68,9 +158,42 @@ pub fn status() -> SyncStatus {
     let manager = shared();
     SyncStatus {
         last_sync: manager.last_sync,
-        is_syncing: manager.state_task.is_some(),
+        is_syncing: manager.state_task.is_some() || manager.file_transfer_task.is_some(),
         error_message: manager.error_message.clone(),
+        queue: queue(&manager),
+        progress: manager.progress.clone(),
     }
+}
+
+fn queue(manager: &GoogleDriveSyncManager) -> Vec<QueueItem> {
+    let mut queue = manager.transfers.clone();
+    let mut errors: Vec<_> = manager.book_errors.iter().collect();
+    errors.sort_by(|a, b| a.0.cmp(b.0));
+    for ((key, _), error) in errors {
+        match queue.iter_mut().find(|item| &item.key == key) {
+            Some(item) => {
+                item.error.get_or_insert_with(|| error.message.clone());
+            }
+            None => queue.push(QueueItem {
+                key: key.clone(),
+                title: error.title.clone(),
+                direction: None,
+                error: Some(error.message.clone()),
+            }),
+        }
+    }
+    queue
+}
+
+fn book_title(key: &str, deleted: bool) -> String {
+    library::load_metadata_at(&SyncStorage::book_directory(key, deleted))
+        .map(|metadata| metadata.title)
+        .unwrap_or_else(|| key.to_string())
+}
+
+fn fail_run(manager: &mut GoogleDriveSyncManager, error: &SyncError) {
+    manager.error_message = Some(error.to_string());
+    manager.unsupported_format |= error.is_format_error();
 }
 
 fn publish() {
@@ -168,6 +291,9 @@ pub async fn stop() {
     manager.state_task = None;
     manager.file_transfer_task = None;
     manager.download_task = None;
+    manager.transfers.clear();
+    manager.progress = None;
+    manager.book_errors.clear();
     drop(manager);
     publish();
 }
@@ -274,10 +400,7 @@ pub async fn sync(book: Option<BookMetadata>) {
             && !task::is_cancelled()
         {
             let mut manager = shared();
-            manager.error_message = Some(error.to_string());
-            if error.is_format_error() {
-                manager.unsupported_format = true;
-            }
+            fail_run(&mut manager, &error);
             if let Some(file_transfer_task) = &manager.file_transfer_task {
                 file_transfer_task.cancel();
             }
@@ -294,6 +417,10 @@ pub async fn sync(book: Option<BookMetadata>) {
             let mut manager = shared();
             manager.state_task = None;
             manager.error_message.is_none()
+                && !manager
+                    .book_errors
+                    .keys()
+                    .any(|(_, phase)| *phase == Phase::State)
         };
         publish();
 
@@ -321,11 +448,10 @@ async fn run_sync(book: Option<BookMetadata>) -> SyncResult<()> {
         }
 
         let key: String = book.folder.nfc().collect();
-        sync_book(&key, None).await?;
-        return Ok(());
+        return record_book(&key, Phase::State, sync_book(&key, None).await);
     }
 
-    let (mut remote, listed, cursor) = changes().await?;
+    let remote = changes().await?;
     let pending: Vec<String> = store()
         .state
         .books
@@ -333,36 +459,45 @@ async fn run_sync(book: Option<BookMetadata>) -> SyncResult<()> {
         .filter(|(_, record)| record.pending)
         .map(|(key, _)| key.clone())
         .collect();
-    for key in pending {
-        remote.entry(key).or_insert_with(|| listed.then(Vec::new));
-    }
-    let shelves_changed = remote.contains_key(".shelves");
-    let mut sorted: Vec<(String, Option<Vec<GoogleDriveFile>>)> = remote
-        .into_iter()
-        .filter(|(key, _)| key != ".shelves")
+    let keys: BTreeSet<String> = remote
+        .changed
+        .iter()
+        .chain(remote.listed.iter().flat_map(HashMap::keys))
+        .cloned()
+        .chain(pending)
+        .filter(|key| key != ".shelves")
         .collect();
-    sorted.sort_by(|a, b| a.0.cmp(&b.0));
-    for (key, files) in sorted {
-        sync_book(&key, files).await?;
+    for key in &keys {
+        record_book(key, Phase::State, sync_book(key, remote.files(key)).await)?;
     }
+
+    let failed = {
+        let manager = shared();
+        keys.iter().any(|key| {
+            manager
+                .book_errors
+                .contains_key(&(key.clone(), Phase::State))
+        })
+    };
     let unattached = store()
         .state
         .books
         .values()
         .any(|record| !record.attached && !record.deleted);
-    if !unattached {
-        if shelves_changed || store().state.shelves_pending {
-            sync_shelves().await?;
-        }
-        shared().cache.cursor = Some(cursor);
-        save_cache()?;
-        {
-            let mut manager = shared();
-            manager.last_sync = Some(library::now_ms());
-            manager.unsupported_format = false;
-        }
-        publish();
+    if failed || unattached {
+        return Ok(());
     }
+    if remote.contains(".shelves") || store().state.shelves_pending {
+        sync_shelves().await?;
+    }
+    shared().cache.cursor = Some(remote.cursor);
+    save_cache()?;
+    {
+        let mut manager = shared();
+        manager.last_sync = Some(library::now_ms());
+        manager.unsupported_format = false;
+    }
+    publish();
     Ok(())
 }
 
@@ -379,60 +514,137 @@ pub fn start_file_sync() {
         return;
     }
     let file_transfer_task = SyncTask::spawn(async {
-        run_file_sync().await;
-        shared().file_transfer_task = None;
+        let result = run_file_sync().await;
+        {
+            let mut manager = shared();
+            manager.file_transfer_task = None;
+            manager.progress = None;
+            if let Err(error) = result
+                && !task::is_cancelled()
+            {
+                fail_run(&mut manager, &error);
+            }
+        }
+        publish();
     });
     manager.file_transfer_task = Some(file_transfer_task.clone());
     drop(manager);
     file_transfer_task.start();
 }
 
-async fn run_file_sync() {
+async fn run_file_sync() -> SyncResult<()> {
     let mut folders = HashMap::new();
     let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
     keys.sort();
+    begin_transfers(&keys);
     for key in keys {
-        if task::is_cancelled() {
-            return;
-        }
+        task::check_cancellation()?;
+        set_current_transfer(&key);
+        let result = sync_files(&key, &mut folders).await;
+        record_book(&key, Phase::File, result)?;
+        finish_transfer(&key);
+    }
+    Ok(())
+}
 
-        for file_type in SyncFileType::ALL_CASES {
-            let result = async {
-                upload_file(&key, file_type, &mut folders).await?;
-                if file_type != SyncFileType::Epub {
-                    download_file(&key, file_type, &|_| {}, &mut folders).await?;
-                }
-                SyncResult::Ok(())
+async fn sync_files(key: &str, folders: &mut Folders) -> SyncResult<()> {
+    let mut result = Ok(());
+    for file_type in SyncFileType::ALL_CASES {
+        task::check_cancellation()?;
+        let transferred = async {
+            upload_file(key, file_type, folders).await?;
+            if file_type != SyncFileType::Epub {
+                download_file(key, file_type, &|_| {}, folders).await?;
             }
-            .await;
-            if let Err(error) = result
-                && stops_file_sync(&error)
-            {
-                return;
-            }
+            SyncResult::Ok(())
         }
+        .await;
+        result = result.and(transferred);
+    }
+    result.and(cleanup_files(key, folders).await)
+}
 
-        if let Err(error) = cleanup_files(&key, &mut folders).await
-            && stops_file_sync(&error)
-        {
-            return;
-        }
+fn transfer_direction(record: &SyncRecord) -> Option<Direction> {
+    let (upload, download) = SyncFileType::ALL_CASES
+        .into_iter()
+        .filter(|&file_type| !record.deleted || file_type == SyncFileType::Cover)
+        .map(|file_type| {
+            let source = record.sources.get(&file_type).copied();
+            let published = record.files.get(&file_type).map(|file| file.modified);
+            (
+                record.attached
+                    && source
+                        .is_some_and(|source| published.is_none_or(|published| published < source)),
+                file_type != SyncFileType::Epub
+                    && published
+                        .is_some_and(|published| source.is_none_or(|source| source < published)),
+            )
+        })
+        .fold(
+            (false, false),
+            |(upload, download), (file_upload, file_download)| {
+                (upload || file_upload, download || file_download)
+            },
+        );
+    match (upload, download) {
+        (true, true) => Some(Direction::Both),
+        (true, false) => Some(Direction::Upload),
+        (false, true) => Some(Direction::Download),
+        (false, false) => None,
     }
 }
 
-fn stops_file_sync(error: &SyncError) -> bool {
-    if task::is_cancelled() {
-        return true;
-    }
-
-    let format_error = error.is_format_error();
+fn begin_transfers(keys: &[String]) {
+    let transfers: Vec<QueueItem> = {
+        let store = store();
+        keys.iter()
+            .filter_map(|key| {
+                let record = &store.state.books[key];
+                transfer_direction(record).map(|direction| QueueItem {
+                    key: key.clone(),
+                    title: book_title(key, record.deleted),
+                    direction: Some(direction),
+                    error: None,
+                })
+            })
+            .collect()
+    };
     {
         let mut manager = shared();
-        manager.error_message = Some(error.to_string());
-        manager.unsupported_format |= format_error;
+        manager.progress = (!transfers.is_empty()).then(|| Progress {
+            done: 0,
+            total: transfers.len(),
+            current: None,
+        });
+        manager.transfers = transfers;
     }
     publish();
-    format_error
+}
+
+fn set_current_transfer(key: &str) {
+    if let Some(progress) = &mut shared().progress {
+        progress.current = Some(key.to_string());
+    }
+    publish();
+}
+
+fn finish_transfer(key: &str) {
+    {
+        let mut manager = shared();
+        if !manager.transfers.iter().any(|item| item.key == key) {
+            return;
+        }
+        if let Some(progress) = &mut manager.progress {
+            progress.done += 1;
+        }
+        if !manager
+            .book_errors
+            .contains_key(&(key.to_string(), Phase::File))
+        {
+            manager.transfers.retain(|item| item.key != key);
+        }
+    }
+    publish();
 }
 
 pub async fn download_book(
@@ -443,7 +655,14 @@ pub async fn download_book(
     sync(Some(book.clone())).await;
     let (unsupported_format, error_message) = {
         let manager = shared();
-        (manager.unsupported_format, manager.error_message.clone())
+        let book_error = manager.book_errors.get(&(key.clone(), Phase::State));
+        (
+            manager.unsupported_format,
+            manager
+                .error_message
+                .clone()
+                .or_else(|| book_error.map(|error| error.message.clone())),
+        )
     };
     if unsupported_format {
         return Err(SyncError::UnsupportedVersion);
@@ -485,21 +704,15 @@ pub async fn download_book(
     Ok(metadata)
 }
 
-async fn changes() -> SyncResult<(HashMap<String, Option<Vec<GoogleDriveFile>>>, bool, String)> {
-    let mut keys: HashMap<String, Option<Vec<GoogleDriveFile>>> = HashMap::new();
-    let mut listed = false;
+async fn changes() -> SyncResult<RemoteChanges> {
+    let mut listed = None;
+    let mut changed = HashSet::new();
     let saved = shared().cache.cursor.clone();
     let mut cursor = match saved {
         Some(saved) => saved,
         None => {
             let cursor = drive::start_token().await?;
-            keys.extend(
-                list_remote()
-                    .await?
-                    .into_iter()
-                    .map(|(key, files)| (key, Some(files))),
-            );
-            listed = true;
+            listed = Some(list_remote().await?);
             cursor
         }
     };
@@ -517,32 +730,32 @@ async fn changes() -> SyncResult<(HashMap<String, Option<Vec<GoogleDriveFile>>>,
                             .is_some_and(|parents| parents.contains(&root)))
             })
         }) {
-            for (key, files) in list_remote().await? {
-                keys.entry(key).or_insert(Some(files));
-            }
-            listed = true;
+            listed = Some(list_remote().await?);
         }
         let state_folder = state_folder();
-        let changed: Vec<String> = page
-            .changes
-            .iter()
-            .filter(|change| !change.removed)
-            .filter_map(|change| change.file.as_ref())
-            .filter(|file| {
-                file.trashed != Some(true)
-                    && file
-                        .parents
-                        .as_ref()
-                        .is_some_and(|parents| parents.contains(&state_folder))
-            })
-            .filter_map(|file| file.state_key())
-            .collect();
-        for key in changed {
-            keys.insert(key, None);
-        }
+        changed.extend(
+            page.changes
+                .iter()
+                .filter(|change| !change.removed)
+                .filter_map(|change| change.file.as_ref())
+                .filter(|file| {
+                    file.trashed != Some(true)
+                        && file
+                            .parents
+                            .as_ref()
+                            .is_some_and(|parents| parents.contains(&state_folder))
+                })
+                .filter_map(|file| file.state_key()),
+        );
         match page.next_page_token {
             Some(next) => cursor = next,
-            None => return Ok((keys, listed, page.new_start_page_token.unwrap())),
+            None => {
+                return Ok(RemoteChanges {
+                    listed,
+                    changed,
+                    cursor: page.new_start_page_token.unwrap(),
+                });
+            }
         }
     }
 }

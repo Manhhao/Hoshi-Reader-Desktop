@@ -14,13 +14,25 @@ use crate::sync::auth;
 #[derive(Debug, Clone)]
 pub enum GoogleDriveError {
     Api(String),
+    Unavailable(String),
     Cancelled,
+}
+
+impl GoogleDriveError {
+    fn unavailable(self) -> Self {
+        match self {
+            GoogleDriveError::Api(message) => GoogleDriveError::Unavailable(message),
+            error => error,
+        }
+    }
 }
 
 impl fmt::Display for GoogleDriveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GoogleDriveError::Api(message) => write!(f, "{message}"),
+            GoogleDriveError::Api(message) | GoogleDriveError::Unavailable(message) => {
+                write!(f, "{message}")
+            }
             GoogleDriveError::Cancelled => write!(f, "cancelled"),
         }
     }
@@ -28,7 +40,7 @@ impl fmt::Display for GoogleDriveError {
 
 impl From<reqwest::Error> for GoogleDriveError {
     fn from(error: reqwest::Error) -> Self {
-        GoogleDriveError::Api(error.to_string())
+        GoogleDriveError::Unavailable(error.to_string())
     }
 }
 
@@ -121,7 +133,13 @@ impl<'a> Request<'a> {
 }
 
 pub async fn request(request: Request<'_>) -> Result<Vec<u8>> {
-    perform_request(&request, auth::access_token()?, true, None).await
+    perform_request(
+        &request,
+        auth::access_token().map_err(GoogleDriveError::Unavailable)?,
+        true,
+        None,
+    )
+    .await
 }
 
 pub async fn get(path: &str, query: &[(&str, &str)]) -> Result<Vec<u8>> {
@@ -138,7 +156,9 @@ async fn perform_request(
         return Err(GoogleDriveError::Cancelled);
     }
     if !crate::sync::settings().online {
-        return Err(GoogleDriveError::Api("No Internet connection.".to_string()));
+        return Err(GoogleDriveError::Unavailable(
+            "No Internet connection.".to_string(),
+        ));
     }
 
     let connection = connection_id();
@@ -163,7 +183,9 @@ async fn perform_request(
 
     let status = response.status().as_u16();
     if status == 401 && retry {
-        let token = auth::refresh_access_token().await?;
+        let token = auth::refresh_access_token()
+            .await
+            .map_err(GoogleDriveError::unavailable)?;
         check_connection(connection)?;
         crate::sync::task::check_cancellation()?;
         return Box::pin(perform_request(request, token, false, on_progress)).await;
@@ -258,7 +280,7 @@ pub async fn download_file(
             content_type: None,
             upload: false,
         },
-        auth::access_token()?,
+        auth::access_token().map_err(GoogleDriveError::Unavailable)?,
         true,
         Some(&progress),
     )

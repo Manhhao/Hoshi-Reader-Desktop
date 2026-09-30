@@ -19,6 +19,9 @@
   import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
   import {
     ALargeSmall,
+    ArrowDown,
+    ArrowUp,
+    ArrowUpDown,
     BookA,
     ChevronDown,
     ChevronRight,
@@ -84,7 +87,10 @@
     lastSync: null,
     isSyncing: false,
     errorMessage: null,
+    queue: [],
+    progress: null,
   });
+  const failedBooks = $derived(driveStatus.queue.filter((item) => item.error).length);
 
   const lastSyncFormat = new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -618,6 +624,7 @@
   let collapsedDialog = $state<HTMLDialogElement | null>(null);
   let categorizeDialog = $state<HTMLDialogElement | null>(null);
   let updateDialog = $state<HTMLDialogElement | null>(null);
+  let transfersDialog = $state<HTMLDialogElement | null>(null);
 
   function addAudioSource() {
     if (!anki) return;
@@ -1196,17 +1203,46 @@
                   </SettingRow>
                 {/if}
                 <button
-                  class="btn btn-outline btn-sm self-start"
-                  disabled={driveStatus.isSyncing}
-                  onclick={() => invoke("gdrive_sync_now")}
+                  class="btn btn-ghost btn-sm -mx-2 h-auto min-h-8 flex-col items-stretch gap-1 px-2 py-1.5 text-sm font-normal"
+                  onclick={() => transfersDialog?.showModal()}
                 >
-                  Sync Now
+                  <span class="flex items-center justify-between">
+                    Queue
+                    <span class="flex items-center gap-1">
+                      {#if driveStatus.progress}
+                        <span class="tabular-nums text-base-content/60">
+                          {driveStatus.progress.done} / {driveStatus.progress.total}
+                        </span>
+                      {:else if failedBooks > 0}
+                        <span class="text-error">{failedBooks} failed</span>
+                      {:else if driveStatus.queue.length > 0}
+                        <span class="tabular-nums text-base-content/60">{driveStatus.queue.length}</span>
+                      {:else}
+                        <span class="text-base-content/60">Empty</span>
+                      {/if}
+                      <ChevronRight class="size-4 text-base-content/60" />
+                    </span>
+                  </span>
+                  {#if driveStatus.progress}
+                    <progress
+                      class="progress w-full"
+                      value={driveStatus.progress.done}
+                      max={driveStatus.progress.total}
+                    ></progress>
+                  {/if}
                 </button>
                 {#if driveStatus.errorMessage}
                   <p class="select-text whitespace-pre-line text-xs text-error">
                     {driveStatus.errorMessage}
                   </p>
                 {/if}
+                <button
+                  class="btn btn-outline btn-sm self-start"
+                  disabled={driveStatus.isSyncing}
+                  onclick={() => invoke("gdrive_sync_now")}
+                >
+                  Sync Now
+                </button>
               </div>
             </div>
           {/if}
@@ -1615,6 +1651,56 @@
       {/if}
     </div>
   </main>
+
+  <dialog class="modal" bind:this={transfersDialog}>
+    <div class="modal-box flex max-h-[80vh] flex-col gap-4">
+      <h3 class="text-base font-semibold">Queue</h3>
+
+      <div class="flex min-h-0 flex-col">
+        {#if driveStatus.queue.length === 0}
+          <div
+            class="flex h-12 items-center justify-center rounded-box border border-base-300 text-sm text-base-content/60"
+          >
+            All Books Synced
+          </div>
+        {:else}
+          <ul class="list min-h-0 overflow-y-auto rounded-box border border-base-300">
+            {#each driveStatus.queue as item (item.key)}
+              <li class="list-row items-center">
+                <div class="list-col-grow min-w-0">
+                  <div class="flex items-center gap-1.5 text-sm">
+                    {#if item.direction === "upload"}
+                      <ArrowUp class="size-3.5 shrink-0 text-base-content/60" />
+                    {:else if item.direction === "download"}
+                      <ArrowDown class="size-3.5 shrink-0 text-base-content/60" />
+                    {:else if item.direction === "both"}
+                      <ArrowUpDown class="size-3.5 shrink-0 text-base-content/60" />
+                    {/if}
+                    <span class="truncate">{item.title}</span>
+                  </div>
+                  {#if item.error}
+                    <div class="select-text whitespace-pre-line text-xs text-error">{item.error}</div>
+                  {/if}
+                </div>
+                {#if item.key === driveStatus.progress?.current}
+                  <span class="loading loading-spinner loading-xs"></span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div class="modal-action mt-0">
+        <form method="dialog">
+          <button class="btn btn-sm">Done</button>
+        </form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
 
   <dialog class="modal" bind:this={updateDialog}>
     <div class="modal-box">

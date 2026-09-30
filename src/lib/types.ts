@@ -109,10 +109,19 @@ export type SasayakiPlayback = {
   audioPath?: string | null;
 };
 
+export type SyncQueueItem = {
+  key: string;
+  title: string;
+  direction: "upload" | "download" | "both" | null;
+  error: string | null;
+};
+
 export type GoogleDriveSyncStatus = {
   lastSync: number | null;
   isSyncing: boolean;
   errorMessage: string | null;
+  queue: SyncQueueItem[];
+  progress: { done: number; total: number; current: string | null } | null;
 };
 
 export type SyncBook = {

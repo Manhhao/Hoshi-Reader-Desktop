@@ -21,6 +21,14 @@ impl SyncError {
     pub fn is_format_error(&self) -> bool {
         matches!(self, SyncError::UnsupportedVersion)
     }
+
+    pub fn stops_run(&self) -> bool {
+        matches!(
+            self,
+            SyncError::UnsupportedVersion
+                | SyncError::Drive(GoogleDriveError::Unavailable(_) | GoogleDriveError::Cancelled)
+        )
+    }
 }
 
 impl fmt::Display for SyncError {
