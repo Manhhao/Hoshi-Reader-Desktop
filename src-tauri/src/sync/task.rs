@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
@@ -25,10 +26,10 @@ pub fn check_cancellation() -> Result<(), GoogleDriveError> {
     Ok(())
 }
 
-pub async fn sleep(seconds: u64) -> Result<(), GoogleDriveError> {
+pub async fn sleep(duration: Duration) -> Result<(), GoogleDriveError> {
     let token = current().unwrap_or_default();
     tokio::select! {
-        _ = tokio::time::sleep(std::time::Duration::from_secs(seconds)) => Ok(()),
+        _ = tokio::time::sleep(duration) => Ok(()),
         _ = token.cancelled() => Err(GoogleDriveError::Cancelled),
     }
 }

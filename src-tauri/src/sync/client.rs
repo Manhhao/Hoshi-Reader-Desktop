@@ -138,6 +138,7 @@ pub async fn request(request: Request<'_>) -> Result<Vec<u8>> {
         auth::access_token().map_err(GoogleDriveError::Unavailable)?,
         true,
         None,
+        0,
     )
     .await
 }
@@ -146,11 +147,23 @@ pub async fn get(path: &str, query: &[(&str, &str)]) -> Result<Vec<u8>> {
     request(Request::get(path, query)).await
 }
 
+const BACKOFF: Duration = Duration::from_secs(1);
+
+fn is_transient(method: &Method, status: u16, error: &Value) -> bool {
+    let limited = status == 429
+        || (status == 403
+            && error["error"]["errors"][0]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.ends_with("ateLimitExceeded")));
+    limited || (status >= 500 && *method != Method::POST)
+}
+
 async fn perform_request(
     request: &Request<'_>,
     token: String,
     retry: bool,
     on_progress: Option<&(dyn Fn(f64) + Sync)>,
+    attempt: u32,
 ) -> Result<Vec<u8>> {
     if STOPPED.load(Ordering::SeqCst) {
         return Err(GoogleDriveError::Cancelled);
@@ -170,7 +183,7 @@ async fn perform_request(
     let mut builder = SESSION_CLIENT
         .request(request.method.clone(), url)
         .query(request.query)
-        .bearer_auth(token);
+        .bearer_auth(&token);
     if let Some(content_type) = request.content_type {
         builder = builder.header("Content-Type", content_type);
     }
@@ -188,16 +201,31 @@ async fn perform_request(
             .map_err(GoogleDriveError::unavailable)?;
         check_connection(connection)?;
         crate::sync::task::check_cancellation()?;
-        return Box::pin(perform_request(request, token, false, on_progress)).await;
+        return Box::pin(perform_request(request, token, false, on_progress, attempt)).await;
     }
 
     let data = read_body(response, on_progress).await?;
     check_connection(connection)?;
     crate::sync::task::check_cancellation()?;
     if status >= 400 {
-        let message = serde_json::from_slice::<Value>(&data)
-            .ok()
-            .and_then(|value| value["error"]["message"].as_str().map(str::to_string))
+        let error = serde_json::from_slice::<Value>(&data).unwrap_or_default();
+        if attempt < 4 && is_transient(&request.method, status, &error) {
+            let jitter = Uuid::new_v4().as_u128() % BACKOFF.as_millis();
+            let delay = BACKOFF * 2u32.pow(attempt) + Duration::from_millis(jitter as u64);
+            crate::sync::task::sleep(delay).await?;
+            check_connection(connection)?;
+            return Box::pin(perform_request(
+                request,
+                token,
+                retry,
+                on_progress,
+                attempt + 1,
+            ))
+            .await;
+        }
+        let message = error["error"]["message"]
+            .as_str()
+            .map(str::to_string)
             .unwrap_or_else(|| format!("Request failed with status {status}"));
         return Err(GoogleDriveError::Api(message));
     }
@@ -283,6 +311,7 @@ pub async fn download_file(
         auth::access_token().map_err(GoogleDriveError::Unavailable)?,
         true,
         Some(&progress),
+        0,
     )
     .await
 }

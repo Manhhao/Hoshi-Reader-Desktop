@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
@@ -203,7 +204,7 @@ pub fn start() {
     let poll_task = SyncTask::spawn(async {
         sync(None).await;
         while !task::is_cancelled() {
-            if task::sleep(120).await.is_err() {
+            if task::sleep(Duration::from_secs(120)).await.is_err() {
                 return;
             }
             sync(None).await;
@@ -313,7 +314,7 @@ pub fn schedule() {
         return;
     }
     let debounce_task = SyncTask::spawn(async {
-        task::sleep(30).await.ok();
+        task::sleep(Duration::from_secs(30)).await.ok();
         if task::is_cancelled() {
             return;
         }
