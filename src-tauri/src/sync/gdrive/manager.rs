@@ -825,7 +825,13 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
     };
     merge_book(key, remote.as_ref())?;
 
-    let Some(book) = store().load_book(key) else {
+    let Some(book) = store().load_book(key, remote.as_ref()) else {
+        let mut store = store();
+        if let Some(record) = store.state.books.get_mut(key) {
+            record.pending = false;
+            record.cleanup.clear();
+            store.save()?;
+        }
         return Ok(());
     };
 
@@ -837,7 +843,9 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
 
     {
         let mut store = store();
-        if store.state.books[key].pending && store.load_book(key).as_ref() == Some(&book) {
+        if store.state.books[key].pending
+            && store.load_book(key, remote.as_ref()).as_ref() == Some(&book)
+        {
             store.state.books.get_mut(key).unwrap().pending = false;
             store.save()?;
         }
@@ -899,7 +907,7 @@ fn merge_book(key: &str, remote: Option<&SyncBook>) -> SyncResult<()> {
     let (Some(remote), Some(book)) = (remote, store.state.books.get(key).cloned()) else {
         let merged = match remote {
             Some(remote) => Some(remote.clone()),
-            None => store.load_book(key),
+            None => store.load_book(key, None),
         };
         if let Some(merged) = merged {
             store.apply_book(key, &merged)?;
@@ -914,7 +922,7 @@ fn merge_book(key: &str, remote: Option<&SyncBook>) -> SyncResult<()> {
             .ok();
     }
 
-    let mut local = store.load_book(key).unwrap();
+    let mut local = store.load_book(key, Some(remote)).unwrap();
     if replaced {
         store.remove_book_files(key)?;
         store
@@ -1214,7 +1222,9 @@ async fn cleanup_files(key: &str, folders: &mut Folders) -> SyncResult<()> {
         let remote = read_state(&files, SyncBook::merge).await?;
         merge_book(key, remote.as_ref())?;
 
-        let book = store().load_book(key).unwrap();
+        let Some(book) = store().load_book(key, remote.as_ref()) else {
+            return Ok(());
+        };
         if book.needs_upload(remote.as_ref()) {
             let mut store = store();
             store.state.books.get_mut(key).unwrap().pending = true;

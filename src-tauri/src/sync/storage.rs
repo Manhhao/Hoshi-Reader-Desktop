@@ -112,6 +112,9 @@ impl SyncStorage {
     }
 
     pub fn reset_sync_state(&mut self) -> SyncResult<()> {
+        self.state.books.retain(|key, _| {
+            library::load_metadata_at(&Self::resolve_book_directory(key)).is_some()
+        });
         for (key, record) in &mut self.state.books {
             let archived = library::load_metadata_at(&Self::book_directory(key, false)).is_none();
             record.generation = if archived { 0 } else { 1 };
@@ -126,13 +129,21 @@ impl SyncStorage {
     }
 
     pub fn prepare_library(&mut self) -> SyncResult<()> {
+        let mut empty = Vec::new();
         for root in Self::book_directories() {
-            statistics::load(&root);
+            let sessions = statistics::load(&root);
             self.prepare_book(&root);
+            if is_archived(&root) && sessions.is_empty() {
+                empty.push(root);
+            }
         }
 
         library::load_shelf_list(app());
-        self.save()
+        self.save()?;
+        for root in empty {
+            library::delete(&root)?;
+        }
+        Ok(())
     }
 
     pub fn prepare_book(&mut self, root: &Path) {
@@ -141,10 +152,7 @@ impl SyncStorage {
             return;
         }
 
-        let archived = root
-            .parent()
-            .and_then(Path::file_name)
-            .is_some_and(|name| name == STATISTICS_ARCHIVE);
+        let archived = is_archived(root);
         let mut record = SyncRecord::new(if archived { 0 } else { 1 }, archived);
         for file_type in SyncFileType::ALL_CASES {
             if self.source_url(&key, file_type).is_some() {
@@ -154,10 +162,16 @@ impl SyncStorage {
         self.state.books.insert(key, record);
     }
 
-    pub fn load_book(&self, key: &str) -> Option<SyncBook> {
+    pub fn load_book(&self, key: &str, remote: Option<&SyncBook>) -> Option<SyncBook> {
         let record = self.state.books.get(key)?;
         let root = Self::resolve_book_directory(key);
-        let metadata = library::load_metadata_at(&root)?;
+        let Some(metadata) = library::load_metadata_at(&root) else {
+            let remote = remote.filter(|_| record.deleted)?;
+            let mut book = SyncBook::new(record.generation, true, remote.metadata.clone());
+            book.character_count = remote.character_count;
+            book.files = record.files.clone();
+            return Some(book);
+        };
         let mut book = SyncBook::new(
             record.generation,
             record.deleted,
@@ -221,6 +235,7 @@ impl SyncStorage {
         }
 
         let root = Self::book_directory(&folder, book.deleted);
+        let stored = book.deleted && book.sessions.is_empty();
         let old_metadata = library::load_metadata_at(&root);
         let mut metadata = BookMetadata::new(
             old_metadata.as_ref().map_or_else(
@@ -253,7 +268,7 @@ impl SyncStorage {
             }
         }
 
-        if Some(&metadata) != old_metadata.as_ref() {
+        if !stored && Some(&metadata) != old_metadata.as_ref() {
             fs::create_dir_all(&root)?;
             library::save_metadata(&metadata, &root)?;
             books_changed = true;
@@ -364,6 +379,9 @@ impl SyncStorage {
         if self.state.books.get(key) != old_record.as_ref() {
             self.save()?;
         }
+        if stored {
+            library::delete(&root)?;
+        }
         if books_changed {
             post_books_changed();
         }
@@ -427,8 +445,18 @@ impl SyncStorage {
     pub fn delete_book(&mut self, key: &str) -> SyncResult<()> {
         let root = Self::book_directory(key, false);
         statistics::archive(app(), &library::load_metadata_at(&root).unwrap())?;
+        let archive = Self::book_directory(key, true);
+        let stored = statistics::load(&archive).is_empty();
 
         let record = self.state.books.get_mut(key).unwrap();
+        if stored && !record.attached && !crate::sync::gdrive::manager::enabled() {
+            self.state.books.remove(key);
+            self.save()?;
+            library::delete(&archive)?;
+            library::delete(&root)?;
+            post_books_changed();
+            return Ok(());
+        }
         record.deleted = true;
         record.pending = true;
         record.cleanup.insert(record.generation);
@@ -439,6 +467,9 @@ impl SyncStorage {
 
         self.save_changes(true)?;
         library::delete(&root)?;
+        if stored {
+            library::delete(&archive)?;
+        }
 
         self.clear_unused_cover(key, None)?;
         self.save_changes(true)
@@ -653,6 +684,12 @@ pub fn sync_highlights(
             )
         })
         .collect()
+}
+
+fn is_archived(root: &Path) -> bool {
+    root.parent()
+        .and_then(Path::file_name)
+        .is_some_and(|name| name == STATISTICS_ARCHIVE)
 }
 
 fn epub_url(root: &Path, epub: &str) -> PathBuf {
