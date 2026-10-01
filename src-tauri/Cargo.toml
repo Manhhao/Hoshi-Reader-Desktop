@@ -35,7 +35,7 @@ open = "5.4.0"
 sha2 = "0.11.0"
 keyring-core = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-hoshidicts = { git = "https://github.com/Manhhao/hoshidicts-rs.git", rev = "57a0e43" }
+hoshidicts = { git = "https://github.com/Manhhao/hoshidicts-rs.git", branch = "main" }
 mp3lame-encoder = "0.2.4"
 unicode-normalization = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

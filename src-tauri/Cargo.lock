@@ -1470,7 +1470,7 @@ dependencies = [
 [[package]]
 name = "hoshidicts"
 version = "0.1.0"
-source = "git+https://github.com/Manhhao/hoshidicts-rs.git?rev=57a0e43#57a0e434922a3192bc999f4971a9ca33c677c078"
+source = "git+https://github.com/Manhhao/hoshidicts-rs.git?branch=main#0a2a4b071666e4c0f1c4ffaa978e4fff57c1d5ba"
 
 [[package]]
 name = "html5ever"
