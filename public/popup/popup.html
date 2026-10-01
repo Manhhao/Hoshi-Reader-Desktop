@@ -370,6 +370,12 @@
         refreshNav();
         const container = document.getElementById("entries-container");
         if (container) container.innerHTML = "";
+        [
+          "popup-two-column-layout",
+          "popup-compact-glossaries",
+          "popup-compact-pitch-accents",
+          "popup-custom-css",
+        ].forEach((id) => document.getElementById(id)?.remove());
         searchTextEl
           ?.querySelectorAll("span.matched")
           .forEach((span) => span.classList.remove("matched"));
