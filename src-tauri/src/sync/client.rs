@@ -6,6 +6,7 @@ use std::time::Duration;
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -149,6 +150,7 @@ pub async fn get(path: &str, query: &[(&str, &str)]) -> Result<Vec<u8>> {
 }
 
 const BACKOFF: Duration = Duration::from_secs(1);
+static LIMIT: Semaphore = Semaphore::const_new(8);
 
 fn is_transient(method: &Method, status: u16, error: &Value) -> bool {
     let limited = status == 429
@@ -191,12 +193,14 @@ async fn perform_request(
     if let Some(body) = &request.body {
         builder = builder.body(body.clone());
     }
+    let permit = cancellable(LIMIT.acquire()).await?.unwrap();
     let response = cancellable(builder.send()).await??;
     check_connection(connection)?;
     crate::sync::task::check_cancellation()?;
 
     let status = response.status().as_u16();
     if status == 401 && retry {
+        drop(permit);
         let token = auth::refresh_access_token()
             .await
             .map_err(GoogleDriveError::unavailable)?;
@@ -206,6 +210,7 @@ async fn perform_request(
     }
 
     let data = read_body(response, on_progress).await?;
+    drop(permit);
     check_connection(connection)?;
     crate::sync::task::check_cancellation()?;
     if status >= 400 {
