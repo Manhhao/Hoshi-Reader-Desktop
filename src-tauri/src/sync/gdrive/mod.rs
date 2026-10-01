@@ -1,5 +1,7 @@
+mod files;
 pub mod handler;
 pub mod manager;
+mod state;
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
@@ -85,7 +87,7 @@ pub async fn gdrive_download_book(
                 )
                 .ok();
         };
-        let result = match manager::download_book(&book, &on_progress).await {
+        let result = match files::download_book(&book, &on_progress).await {
             Ok(downloaded) if task::check_cancellation().is_ok() => Ok(Some(downloaded)),
             Err(error)
                 if !task::is_cancelled()
