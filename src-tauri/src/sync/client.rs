@@ -58,7 +58,8 @@ pub struct GoogleDriveFile {
     pub id: String,
     pub name: String,
     pub mime_type: String,
-    pub version: String,
+    #[serde(default, rename = "md5Checksum")]
+    pub checksum: String,
     pub size: Option<String>,
     pub parents: Option<Vec<String>>,
     pub trashed: Option<bool>,
@@ -273,7 +274,7 @@ pub async fn write(
         path: &path,
         query: &[
             ("uploadType", "multipart"),
-            ("fields", "id,name,mimeType,version,createdTime"),
+            ("fields", "id,name,mimeType,md5Checksum,createdTime"),
         ],
         method: if file_id.is_none() {
             Method::POST

@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 use serde_json::json;
@@ -7,24 +7,24 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
 use crate::sync::app;
-use crate::sync::client::{self, GoogleDriveFile};
+use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{
     Phase, publish, record_book, save_cache, shared, state_folder, store,
 };
-use crate::sync::model::{SyncBook, SyncResult, SyncShelves, sync_format};
+use crate::sync::model::{SyncBook, SyncError, SyncResult, SyncShelves, sync_format};
 use crate::sync::storage::SyncStorage;
 use crate::sync::task;
 
 struct RemoteChanges {
     listed: Option<HashMap<String, Vec<GoogleDriveFile>>>,
-    changed: HashSet<String>,
+    changed: HashMap<String, Vec<GoogleDriveFile>>,
     cursor: String,
 }
 
 impl RemoteChanges {
     fn contains(&self, key: &str) -> bool {
-        self.changed.contains(key)
+        self.changed.contains_key(key)
             || self
                 .listed
                 .as_ref()
@@ -32,16 +32,65 @@ impl RemoteChanges {
     }
 
     fn files(&self, key: &str) -> Option<Vec<GoogleDriveFile>> {
-        if self.changed.contains(key) {
-            return None;
+        let changed = self.changed.get(key);
+        if changed.is_none()
+            && let Some(listed) = &self.listed
+        {
+            return Some(listed.get(key).cloned().unwrap_or_default());
         }
-        self.listed
-            .as_ref()
-            .map(|listed| listed.get(key).cloned().unwrap_or_default())
+        let mut files = cached_files(key)?;
+        for file in changed.into_iter().flatten() {
+            if file.trashed == Some(true) {
+                files.remove(&file.id);
+            } else {
+                files.insert(file.id.clone(), file.clone());
+            }
+        }
+        Some(files.into_values().collect())
     }
 }
 
+fn cached_files(key: &str) -> Option<BTreeMap<String, GoogleDriveFile>> {
+    let files = shared()
+        .cache
+        .book_versions
+        .get(key)?
+        .iter()
+        .map(|(id, checksum)| {
+            let file = GoogleDriveFile {
+                id: id.clone(),
+                name: format!("{key}.json"),
+                mime_type: String::new(),
+                checksum: checksum.clone(),
+                size: None,
+                parents: None,
+                trashed: None,
+                created_time: String::new(),
+            };
+            (id.clone(), file)
+        })
+        .collect();
+    Some(files)
+}
+
+async fn find_files(key: &str) -> SyncResult<Vec<GoogleDriveFile>> {
+    Ok(drive::children(&state_folder(), Some(&format!("{key}.json"))).await?)
+}
+
+fn file_versions(files: &[GoogleDriveFile]) -> HashMap<String, String> {
+    files
+        .iter()
+        .map(|file| (file.id.clone(), file.checksum.clone()))
+        .collect()
+}
+
 pub(super) async fn run(book: Option<BookMetadata>) -> SyncResult<()> {
+    let result = sync_state(book).await;
+    let saved = save_cache();
+    result.and(saved)
+}
+
+async fn sync_state(book: Option<BookMetadata>) -> SyncResult<()> {
     task::check_cancellation()?;
     shared().error_message = None;
     publish();
@@ -65,16 +114,21 @@ pub(super) async fn run(book: Option<BookMetadata>) -> SyncResult<()> {
         .collect();
     let keys: BTreeSet<String> = remote
         .changed
-        .iter()
+        .keys()
         .chain(remote.listed.iter().flat_map(HashMap::keys))
         .cloned()
         .chain(pending)
         .filter(|key| key != ".shelves")
         .collect();
-    prefetch(&remote, &keys).await?;
-    for key in &keys {
-        record_book(key, Phase::State, sync_book(key, remote.files(key)).await)?;
-    }
+    let books = keys
+        .iter()
+        .map(|key| {
+            let key = key.clone();
+            let files = remote.files(&key);
+            async move { record_book(&key, Phase::State, sync_book(&key, files).await) }
+        })
+        .collect();
+    task::concurrent(books).await?;
 
     let failed = {
         let manager = shared();
@@ -95,10 +149,9 @@ pub(super) async fn run(book: Option<BookMetadata>) -> SyncResult<()> {
     if remote.contains(".shelves") || store().state.shelves_pending {
         sync_shelves().await?;
     }
-    shared().cache.cursor = Some(remote.cursor);
-    save_cache()?;
     {
         let mut manager = shared();
+        manager.cache.cursor = Some(remote.cursor);
         manager.last_sync = Some(library::now_ms());
         manager.unsupported_format = false;
     }
@@ -108,7 +161,7 @@ pub(super) async fn run(book: Option<BookMetadata>) -> SyncResult<()> {
 
 async fn changes() -> SyncResult<RemoteChanges> {
     let mut listed = None;
-    let mut changed = HashSet::new();
+    let mut changed: HashMap<String, Vec<GoogleDriveFile>> = HashMap::new();
     let saved = shared().cache.cursor.clone();
     let mut cursor = match saved {
         Some(saved) => saved,
@@ -135,20 +188,21 @@ async fn changes() -> SyncResult<RemoteChanges> {
             listed = Some(list_remote().await?);
         }
         let state_folder = state_folder();
-        changed.extend(
-            page.changes
-                .iter()
-                .filter(|change| !change.removed)
-                .filter_map(|change| change.file.as_ref())
-                .filter(|file| {
-                    file.trashed != Some(true)
-                        && file
-                            .parents
-                            .as_ref()
-                            .is_some_and(|parents| parents.contains(&state_folder))
-                })
-                .filter_map(|file| file.state_key()),
-        );
+        for file in page
+            .changes
+            .into_iter()
+            .filter(|change| !change.removed)
+            .filter_map(|change| change.file)
+            .filter(|file| {
+                file.parents
+                    .as_ref()
+                    .is_some_and(|parents| parents.contains(&state_folder))
+            })
+        {
+            if let Some(key) = file.state_key() {
+                changed.entry(key).or_default().push(file);
+            }
+        }
         match page.next_page_token {
             Some(next) => cursor = next,
             None => {
@@ -186,30 +240,55 @@ async fn list_remote() -> SyncResult<HashMap<String, Vec<GoogleDriveFile>>> {
     Ok(grouped)
 }
 
-async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResult<()> {
-    let files = match listed {
-        Some(files) => files,
-        None => drive::children(&state_folder(), Some(&format!("{key}.json"))).await?,
+async fn remote_state(
+    key: &str,
+    listed: Option<Vec<GoogleDriveFile>>,
+) -> SyncResult<Option<(Vec<GoogleDriveFile>, Option<SyncBook>)>> {
+    let Some(files) = listed else {
+        let files = match cached_files(key) {
+            Some(files) => files.into_values().collect(),
+            None => find_files(key).await?,
+        };
+        task::check_cancellation()?;
+        shared().cache.book_versions.remove(key);
+        return match read_state(&files, SyncBook::merge).await {
+            Err(SyncError::Drive(GoogleDriveError::Api(_))) => {
+                let files = find_files(key).await?;
+                let state = read_state(&files, SyncBook::merge).await?;
+                Ok(Some((files, state)))
+            }
+            state => Ok(Some((files, state?))),
+        };
     };
     task::check_cancellation()?;
 
-    let mut versions = file_versions(&files);
-    if unchanged(key, &files) {
-        return Ok(());
+    let versions = file_versions(&files);
+    let pending = store().state.books.get(key).map(|record| record.pending);
+    if files.len() == 1
+        && pending == Some(false)
+        && shared().cache.book_versions.get(key) == Some(&versions)
+    {
+        return Ok(None);
     }
-    if shared().cache.book_versions.remove(key).is_some() {
-        save_cache()?;
-    }
+    shared().cache.book_versions.remove(key);
 
     let cached = shared()
         .remote_books
         .get(key)
         .filter(|(cached, _)| *cached == versions)
         .map(|(_, book)| book.clone());
-    let mut remote = match cached {
+    let state = match cached {
         Some(book) => Some(book),
         None => read_state(&files, SyncBook::merge).await?,
     };
+    Ok(Some((files, state)))
+}
+
+async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResult<()> {
+    let Some((files, mut remote)) = remote_state(key, listed).await? else {
+        return Ok(());
+    };
+    let mut versions = file_versions(&files);
     merge_book(key, remote.as_ref())?;
 
     let Some(book) = store().load_book(key, remote.as_ref()) else {
@@ -224,7 +303,7 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
 
     if book.needs_upload(remote.as_ref()) || files.len() > 1 {
         let written = write_state(&book, &format!("{key}.json"), &files).await?;
-        versions = HashMap::from([(written.id, written.version)]);
+        versions = HashMap::from([(written.id, written.checksum)]);
         remote = Some(book.clone());
     }
 
@@ -244,54 +323,7 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
         .cache
         .book_versions
         .insert(key.to_string(), versions);
-    save_cache()
-}
-
-fn file_versions(files: &[GoogleDriveFile]) -> HashMap<String, String> {
-    files
-        .iter()
-        .map(|file| (file.id.clone(), file.version.clone()))
-        .collect()
-}
-
-fn unchanged(key: &str, files: &[GoogleDriveFile]) -> bool {
-    files.len() == 1
-        && store()
-            .state
-            .books
-            .get(key)
-            .is_some_and(|record| !record.pending)
-        && shared().cache.book_versions.get(key) == Some(&file_versions(files))
-}
-
-async fn prefetch(remote: &RemoteChanges, keys: &BTreeSet<String>) -> SyncResult<()> {
-    let downloads = keys
-        .iter()
-        .filter_map(|key| {
-            let files = remote.files(key).filter(|files| !files.is_empty())?;
-            let versions = file_versions(&files);
-            if unchanged(key, &files)
-                || shared()
-                    .remote_books
-                    .get(key)
-                    .is_some_and(|(cached, _)| *cached == versions)
-            {
-                return None;
-            }
-            let key = key.clone();
-            Some(async move {
-                match read_state(&files, SyncBook::merge).await {
-                    Ok(Some(book)) => {
-                        shared().remote_books.insert(key, (versions, book));
-                    }
-                    Err(error) if error.stops_run() => return Err(error),
-                    _ => {}
-                }
-                Ok(())
-            })
-        })
-        .collect();
-    task::concurrent(downloads).await
+    Ok(())
 }
 
 pub(super) async fn read_state<T: serde::de::DeserializeOwned>(

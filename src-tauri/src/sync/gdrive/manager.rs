@@ -24,6 +24,8 @@ pub struct GoogleDriveSyncCache {
     pub state_folder: String,
     pub book_folder: String,
     pub book_versions: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
+    pub book_folders: HashMap<String, String>,
 }
 
 #[derive(Default)]
@@ -426,13 +428,16 @@ pub fn start_file_sync() {
             let mut manager = shared();
             manager.file_transfer_task = None;
             manager.progress = None;
-            if let Err(error) = result
+            if let Err(error) = &result
                 && !task::is_cancelled()
             {
-                fail_run(&mut manager, &error);
+                fail_run(&mut manager, error);
             }
         }
         publish();
+        if result.is_ok_and(|published| published) && !task::is_cancelled() {
+            tauri::async_runtime::spawn(sync(None));
+        }
     });
     manager.file_transfer_task = Some(file_transfer_task.clone());
     drop(manager);

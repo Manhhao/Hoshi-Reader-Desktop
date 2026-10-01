@@ -5,7 +5,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile, Request, Result};
 
-const FILE_FIELDS: &str = "id,name,mimeType,version,size,parents,trashed,createdTime";
+const FILE_FIELDS: &str = "id,name,mimeType,md5Checksum,size,parents,trashed,createdTime";
 
 impl GoogleDriveFile {
     pub fn is_folder(&self) -> bool {
@@ -90,18 +90,6 @@ pub async fn layout() -> Result<Layout> {
     Ok(Layout { root, state, books })
 }
 
-pub async fn file_folder(
-    books: &str,
-    key: &str,
-    generation: i64,
-    create: bool,
-) -> Result<Option<String>> {
-    let Some(book) = folder(books, key, create).await? else {
-        return Ok(None);
-    };
-    folder(&book, &generation.to_string(), create).await
-}
-
 pub async fn folder(parent: &str, name: &str, create: bool) -> Result<Option<String>> {
     if let Some(folder) = children(parent, Some(name))
         .await?
@@ -114,7 +102,10 @@ pub async fn folder(parent: &str, name: &str, create: bool) -> Result<Option<Str
     if !create {
         return Ok(None);
     }
+    create_folder(parent, name).await.map(Some)
+}
 
+pub async fn create_folder(parent: &str, name: &str) -> Result<String> {
     let body = json!({
         "name": name,
         "parents": [parent],
@@ -130,7 +121,7 @@ pub async fn folder(parent: &str, name: &str, create: bool) -> Result<Option<Str
         upload: false,
     })
     .await?;
-    Ok(Some(decode::<GoogleDriveFile>(&data)?.id))
+    Ok(decode::<GoogleDriveFile>(&data)?.id)
 }
 
 pub async fn children(parent: &str, name: Option<&str>) -> Result<Vec<GoogleDriveFile>> {
@@ -186,21 +177,9 @@ pub async fn upload(data: Vec<u8>, file_name: &str, folder: &str) -> Result<()> 
 }
 
 pub async fn download(
-    file_name: &str,
-    folder: Option<&str>,
-    listed: Option<GoogleDriveFile>,
+    file: &GoogleDriveFile,
     on_progress: &(dyn Fn(f64) + Sync),
 ) -> Result<Vec<u8>> {
-    let file = match (listed, folder) {
-        (Some(file), _) => Some(file),
-        (None, Some(folder)) => children(folder, Some(file_name)).await?.into_iter().next(),
-        (None, None) => None,
-    };
-    let Some(file) = file else {
-        return Err(GoogleDriveError::Api(format!(
-            "{file_name} is missing from Google Drive."
-        )));
-    };
     client::download_file(
         &file.id,
         file.size

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use serde_json::json;
 use tauri::Emitter;
@@ -7,82 +7,19 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
 use crate::statistics;
-use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile};
+use crate::sync::client::{self, GoogleDriveError};
 use crate::sync::gdrive::handler as drive;
+use crate::sync::gdrive::listing::Listing;
 use crate::sync::gdrive::manager::{
-    self, Direction, Phase, Progress, QueueItem, book_folder, book_title, publish, record_book,
-    shared, state_folder, store,
+    self, Direction, Phase, Progress, QueueItem, book_title, publish, record_book, shared,
+    state_folder, store,
 };
 use crate::sync::gdrive::state::{merge_book, read_state};
 use crate::sync::model::{SyncBook, SyncError, SyncFileType, SyncResult, Timestamped};
 use crate::sync::storage::{self, SASAYAKI_MATCH, SyncRecord, SyncStorage};
 use crate::sync::{app, task};
 
-#[derive(Default)]
-struct Listing {
-    folders: Mutex<HashMap<(String, i64), String>>,
-    files: HashMap<(String, String), GoogleDriveFile>,
-}
-
-impl Listing {
-    async fn list() -> SyncResult<Self> {
-        let listed = drive::list("'me' in owners").await?;
-        let book_folder = book_folder();
-        let keys: HashMap<&str, &str> = listed
-            .iter()
-            .filter(|file| {
-                file.parents
-                    .as_ref()
-                    .is_some_and(|parents| parents.contains(&book_folder))
-            })
-            .map(|file| (file.id.as_str(), file.name.as_str()))
-            .collect();
-        let mut folders = HashMap::new();
-        let mut files = HashMap::new();
-        for file in &listed {
-            let Some(parent) = file.parents.as_ref().and_then(|parents| parents.first()) else {
-                continue;
-            };
-            match (keys.get(parent.as_str()), file.name.parse::<i64>()) {
-                (Some(key), Ok(generation)) if file.is_folder() => {
-                    folders
-                        .entry((key.to_string(), generation))
-                        .or_insert(file.id.clone());
-                }
-                _ => {
-                    files
-                        .entry((parent.clone(), file.name.clone()))
-                        .or_insert(file.clone());
-                }
-            }
-        }
-        Ok(Listing {
-            folders: Mutex::new(folders),
-            files,
-        })
-    }
-
-    async fn folder(&self, key: &str, generation: i64, create: bool) -> SyncResult<Option<String>> {
-        let id = (key.to_string(), generation);
-        let listed = self.folders.lock().unwrap().get(&id).cloned();
-        if listed.is_some() {
-            return Ok(listed);
-        }
-        let folder = drive::file_folder(&book_folder(), key, generation, create).await?;
-        if let Some(folder) = &folder {
-            self.folders.lock().unwrap().insert(id, folder.clone());
-        }
-        Ok(folder)
-    }
-
-    fn file(&self, folder: &str, name: &str) -> Option<GoogleDriveFile> {
-        self.files
-            .get(&(folder.to_string(), name.to_string()))
-            .cloned()
-    }
-}
-
-pub(super) async fn run() -> SyncResult<()> {
+pub(super) async fn run() -> SyncResult<bool> {
     let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
     keys.sort();
     begin_transfers(&keys);
@@ -101,11 +38,14 @@ pub(super) async fn run() -> SyncResult<()> {
                 let result = sync_files(&key, &listing).await;
                 record_book(&key, Phase::File, result)?;
                 finish_transfer(&key);
-                Ok(())
+                SyncResult::Ok(())
             }
         })
         .collect();
-    task::concurrent(transfers).await
+    let result = task::concurrent(transfers).await;
+    manager::save_cache()?;
+    result?;
+    Ok(listing.published.load(Ordering::SeqCst))
 }
 
 async fn sync_files(key: &str, listing: &Listing) -> SyncResult<()> {
@@ -297,6 +237,7 @@ async fn upload_file(key: &str, file_type: SyncFileType, listing: &Listing) -> S
             },
         );
         record.pending = true;
+        listing.published.store(true, Ordering::SeqCst);
         return store.save_changes(false);
     };
 
@@ -316,10 +257,7 @@ async fn upload_file(key: &str, file_type: SyncFileType, listing: &Listing) -> S
         return Ok(());
     }
 
-    let folder = listing.folder(key, record.generation, true).await?.unwrap();
-    if listing.file(&folder, &name).is_none() {
-        drive::upload(data, &name, &folder).await?;
-    }
+    listing.upload(key, record.generation, &name, data).await?;
     task::check_cancellation()?;
     if !can_publish(key, file_type, source, record.generation) {
         return Ok(());
@@ -344,6 +282,7 @@ async fn upload_file(key: &str, file_type: SyncFileType, listing: &Listing) -> S
         },
     );
     current.pending = true;
+    listing.published.store(true, Ordering::SeqCst);
     store.save_changes(false)
 }
 
@@ -395,12 +334,10 @@ async fn download_file(
         return Ok(());
     }
 
-    let folder = listing.folder(key, record.generation, false).await?;
-
-    let listed = folder
-        .as_deref()
-        .and_then(|folder| listing.file(folder, &name));
-    let data = drive::download(&name, folder.as_deref(), listed, on_progress).await?;
+    let Some(file) = listing.find(key, record.generation, &name).await? else {
+        return Err(GoogleDriveError::Api(format!("{name} is missing from Google Drive.")).into());
+    };
+    let data = drive::download(&file, on_progress).await?;
 
     task::check_cancellation()?;
 
@@ -528,17 +465,13 @@ async fn cleanup_files(key: &str, listing: &Listing) -> SyncResult<()> {
             return store.save_changes(false);
         }
 
-        let folder = listing.folder(key, generation, false).await?;
+        let folder = listing.folder(key, generation).await?;
 
         let mut recent = false;
         if let Some(folder) = &folder {
             if generation < book.generation {
                 client::trash_file(folder).await?;
-                listing
-                    .folders
-                    .lock()
-                    .unwrap()
-                    .remove(&(key.to_string(), generation));
+                listing.forget(key, generation);
                 task::check_cancellation()?;
             } else {
                 let files = drive::children(folder, None).await?;
