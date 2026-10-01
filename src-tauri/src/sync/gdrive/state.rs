@@ -10,7 +10,7 @@ use crate::sync::app;
 use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{
-    Phase, publish, record_book, save_cache, shared, state_folder, store,
+    Phase, publish, record_book, reset_connection, save_cache, shared, state_folder, store,
 };
 use crate::sync::model::{SyncBook, SyncError, SyncResult, SyncShelves, sync_format};
 use crate::sync::storage::SyncStorage;
@@ -219,6 +219,10 @@ async fn changes() -> SyncResult<RemoteChanges> {
 async fn load_layout() -> SyncResult<()> {
     let layout = drive::layout().await?;
     task::check_cancellation()?;
+    let root = shared().cache.root.clone();
+    if !root.is_empty() && root != layout.root {
+        reset_connection(false)?;
+    }
     let mut manager = shared();
     manager.cache.root = layout.root;
     manager.cache.state_folder = layout.state;
