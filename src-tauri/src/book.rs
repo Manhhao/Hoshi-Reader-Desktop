@@ -150,6 +150,7 @@ pub fn book_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec
             "highlights.js" => include_str!("../../src/reader/highlights.js"),
             "selection.js" => include_str!("../../src/reader/selection.js"),
             "paragraph.js" => include_str!("../../src/reader/paragraph.js"),
+            "continuous.js" => include_str!("../../src/reader/continuous.js"),
             "boot.js" => include_str!("../../src/reader/boot.js"),
             _ => "",
         };
@@ -213,12 +214,13 @@ fn serve_resource(app: &AppHandle, path: &str) -> Option<(String, Vec<u8>)> {
 }
 
 fn inject_scripts(bytes: Vec<u8>) -> Vec<u8> {
-    const STYLE: &str = r#"<style>:root{color-scheme:light dark}html{opacity:0;background:transparent!important}html,body{overflow:hidden}</style>"#;
+    const STYLE: &str = r#"<style data-hoshi="">:root{color-scheme:light dark}html{opacity:0;background:transparent!important}html,body{overflow:hidden}</style>"#;
     const TAGS: &str = concat!(
         r#"<script src="/__hoshi/reader.js"></script>"#,
         r#"<script src="/__hoshi/selection.js"></script>"#,
         r#"<script src="/__hoshi/highlights.js"></script>"#,
         r#"<script src="/__hoshi/paragraph.js"></script>"#,
+        r#"<script src="/__hoshi/continuous.js"></script>"#,
         r#"<script src="/__hoshi/boot.js"></script>"#,
     );
     let mut html = String::from_utf8_lossy(&bytes).into_owned();

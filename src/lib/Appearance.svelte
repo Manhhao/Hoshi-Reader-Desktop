@@ -246,7 +246,10 @@
     label="Paragraph Mode"
     {compact}
     bind:checked={readerConfig.paragraphMode}
-    onchange={() => save(onReload)}
+    onchange={() => {
+      if (readerConfig.paragraphMode) readerConfig.continuousMode = false;
+      save(onReload);
+    }}
   />
   {#if readerConfig.paragraphMode}
     <SettingSlider
@@ -325,6 +328,26 @@
   {/if}
 {/snippet}
 
+{#snippet continuous()}
+  <SettingRow label="Reading Mode" {compact}>
+    <div class="join">
+      {#each [["Paginated", false], ["Continuous", true]] as const as [label, value] (label)}
+        <button
+          class="btn join-item btn-sm {readerConfig.continuousMode === value ? 'btn-active' : ''}"
+          onclick={() => {
+            if (readerConfig.continuousMode === value) return;
+            readerConfig.continuousMode = value;
+            if (value) readerConfig.paragraphMode = false;
+            save(onReload);
+          }}
+        >
+          {label}
+        </button>
+      {/each}
+    </div>
+  </SettingRow>
+{/snippet}
+
 {#snippet layoutSize()}
   <SettingStepper
     label="Horizontal Padding"
@@ -373,12 +396,14 @@
 {/snippet}
 
 {#snippet layoutToggles()}
-  <SettingToggle
-    label="Avoid Page Break"
-    {compact}
-    bind:checked={readerConfig.avoidPageBreak}
-    onchange={() => save(onRestyle)}
-  />
+  {#if !readerConfig.continuousMode}
+    <SettingToggle
+      label="Avoid Page Break"
+      {compact}
+      bind:checked={readerConfig.avoidPageBreak}
+      onchange={() => save(onRestyle)}
+    />
+  {/if}
   <SettingToggle
     label="Justify Text"
     {compact}
@@ -553,8 +578,15 @@
     {/each}
   </div>
   {#if tab === "Layout"}
-    <SettingGroup>{@render paragraph()}</SettingGroup>
-    <SettingGroup>{@render spread()}</SettingGroup>
+    <SettingGroup>
+      {@render continuous()}
+      {#if !readerConfig.continuousMode}
+        {@render paragraph()}
+      {/if}
+    </SettingGroup>
+    {#if !readerConfig.continuousMode}
+      <SettingGroup>{@render spread()}</SettingGroup>
+    {/if}
     <SettingGroup>{@render layoutSize()}</SettingGroup>
     <SettingGroup>{@render layoutToggles()}</SettingGroup>
     {#if readerConfig.layoutAdvanced}
@@ -574,14 +606,19 @@
   </SettingsSection>
   <SettingsSection title="Text">{@render text()}</SettingsSection>
   <SettingsSection title="Layout">
-    {@render paragraph()}
+    {@render continuous()}
+    {#if !readerConfig.continuousMode}
+      {@render paragraph()}
+    {/if}
     {@render layoutSize()}
     {@render layoutToggles()}
     {#if readerConfig.layoutAdvanced}
       {@render layoutAdvanced()}
     {/if}
   </SettingsSection>
-  <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
+  {#if !readerConfig.continuousMode}
+    <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
+  {/if}
   <SettingsSection title="Progress">{@render progress()}</SettingsSection>
   <SettingsSection title="Display">{@render display()}</SettingsSection>
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>

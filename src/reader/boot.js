@@ -21,9 +21,13 @@
   const maxSentencesPerPage = Number(params.get("spp"));
   const splitDialogue = params.get("sd") === "1";
   const pagesRun = params.get("pages");
+  const continuous = params.get("cm") === "1" && !paragraphMode;
+  const hc = window.hoshiContinuous;
+  let wheelDisabled = params.get("dw") === "1";
   let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
   let clickAdvance = paragraphMode && params.get("ca") === "1";
   const blurImages = params.get("bi") === "1";
+  const spineIndex = Number(params.get("si"));
   const fontName = params.get("font");
   const fontFile = params.get("ffile");
   const sasayakiTextColor = params.get("stc");
@@ -90,7 +94,7 @@
   function applyStyle() {
     const paddingX = effectivePadding(horizontalPadding, maxWidth, window.innerWidth);
     const paddingY = effectivePadding(verticalPadding, maxHeight, window.innerHeight);
-    const overlap = vertical && !chromium ? fontSize : 0;
+    const overlap = vertical && !chromium && !continuous ? fontSize : 0;
     const spread = spreadGap > 0;
     const pages = spread ? 2 : 1;
     const gap = spread ? `${spreadGap}px` : `${paddingX}vw`;
@@ -100,7 +104,9 @@
     const imgHeight = vertical
       ? `calc(${100 - paddingY}vh - ${(overlap * (100 - paddingY)) / 100}px)`
       : `${100 - paddingY}vh`;
-    const columns = vertical && chromium
+    const columns = continuous
+      ? ""
+      : vertical && chromium
       ? `column-width: 100vh !important; column-height: ${pageWidth} !important; column-wrap: wrap !important; row-gap: ${gap} !important; column-gap: 0 !important;`
       : `-webkit-column-axis: horizontal !important; column-width: ${spread ? imgWidth : "100vw"} !important; column-gap: ${gap} !important;`;
     style.textContent = `
@@ -133,7 +139,7 @@
         font-family: ${fontName ? `"${fontName}", ` : ""}"Hiragino Mincho ProN", "Yu Mincho", serif !important;
         ${justify ? "" : "text-align: start !important; hanging-punctuation: allow-end !important; line-break: strict !important;"}
         ${advanced ? `line-height: ${lineHeight} !important; letter-spacing: ${charSpacing / 100}em !important;` : ""}
-        padding: ${paddingY / 2}vh ${side} !important;
+        padding: ${continuous ? (vertical ? `${paddingY / 2}vh 0` : `0 ${paddingX / 2}vw`) : `${paddingY / 2}vh ${side}`} !important;
         ${spread && vertical && !chromium ? `padding-left: calc(50vw + ${side}) !important;` : ""}
         ${overlap ? `padding-bottom: calc(${paddingY / 2}vh + ${overlap}px) !important;` : ""}
         ${fontSize ? `font-size: ${fontSize}px !important;` : ""}
@@ -191,8 +197,7 @@
       svg {
         max-width: ${imgWidth} !important;
         max-height: ${imgHeight} !important;
-        width: 100% !important;
-        height: 100% !important;
+        ${continuous ? `height: ${imgHeight} !important; width: auto !important;` : "width: 100% !important; height: 100% !important;"}
         display: block !important;
         margin: auto !important;
         break-inside: avoid !important;
@@ -220,6 +225,28 @@
         background-color: var(--hoshi-sasayaki-background-color) !important;
       }
       ${
+        continuous
+          ? `body {
+        overflow-${vertical ? "x: auto" : "y: auto"} !important;
+        overflow-${vertical ? "y" : "x"}: hidden !important;
+        overflow-anchor: none !important;
+        scrollbar-width: none !important;
+        ${
+          vertical
+            ? `width: ${100 - paddingX}vw !important; margin: 0 ${paddingX / 2}vw !important;`
+            : `height: ${100 - paddingY}vh !important; margin: ${paddingY / 2}vh 0 !important;`
+        }
+      }
+      body::-webkit-scrollbar { display: none !important; }
+      hoshi-section {
+        display: flow-root !important;
+        writing-mode: inherit !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }`
+          : ""
+      }
+      ${
         paragraphMode
           ? `body { font-kerning: none !important; }
       p.hoshi-paragraph {
@@ -237,7 +264,7 @@
     spacers = [];
     r.spacer = null;
     r.pagesPerScreen = pages;
-    if (chromium && !spread) {
+    if ((chromium && !spread) || continuous) {
       return;
     }
     for (let i = 0; i < pages; i++) {
@@ -345,13 +372,16 @@
   syncPageSize();
   r.registerCopyText();
 
-  if (furiganaMode === "Toggle") {
-    document.querySelectorAll("ruby").forEach((ruby) => {
-      if (ruby.querySelector("rt")) ruby.classList.add("furigana-hidden");
-    });
-  } else if (furiganaMode === "Hidden") {
-    document.querySelectorAll("rt").forEach((rt) => rt.remove());
+  function applyFurigana(root) {
+    if (furiganaMode === "Toggle") {
+      root.querySelectorAll("ruby").forEach((ruby) => {
+        if (ruby.querySelector("rt")) ruby.classList.add("furigana-hidden");
+      });
+    } else if (furiganaMode === "Hidden") {
+      root.querySelectorAll("rt").forEach((rt) => rt.remove());
+    }
   }
+  applyFurigana(document);
 
   let highlightRange = null;
   let secondaryRange = null;
@@ -555,6 +585,10 @@
     if (maxWidth || maxHeight) applyStyle();
     layoutParagraphs();
     if (!restored) return;
+    if (continuous) {
+      rebuildContinuous();
+      return;
+    }
     if (!resizeAnchor) resizeAnchor = nodeAtProgress(position);
     alignToNode(resizeAnchor);
     clearTimeout(resizeTimer);
@@ -564,13 +598,35 @@
   window.addEventListener("resize", handleViewportChange);
   new ResizeObserver(handleViewportChange).observe(document.documentElement);
 
-  function applyCues(cues) {
+  function sectionRoot(spine) {
+    return continuous ? (hc.sections.get(spine ?? spineIndex)?.el ?? null) : undefined;
+  }
+
+  function applyCues(cues, spine) {
     if (!cues) return;
-    r.applySasayakiCues(cues);
+    const root = sectionRoot(spine);
+    if (root === null) return;
+    r.applySasayakiCues(cues, root);
+  }
+
+  function applyHighlights(highlights, spine) {
+    const root = sectionRoot(spine);
+    if (root === null) return;
+    window.hoshiHighlights.applyHighlights(highlights, root);
+  }
+
+  function rebuildContinuous() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const anchor = hc.last;
+      if (!anchor) return;
+      hc.vertical = r.isVertical();
+      hc.goTo(anchor.spine, anchor.frac, null, true).then(() => hc.report());
+    }, 150);
   }
 
   function restyle(m) {
-    const anchor = nodeAtProgress(position);
+    const anchor = continuous ? null : nodeAtProgress(position);
     fontSize = m.fs;
     horizontalPadding = m.hp;
     verticalPadding = m.vp;
@@ -585,6 +641,10 @@
     spreadGap = m.sp;
     applyStyle();
     syncPageSize();
+    if (continuous) {
+      rebuildContinuous();
+      return;
+    }
     layoutParagraphs();
     alignToNode(anchor);
     if (restored) r.notifyPageChanged();
@@ -603,6 +663,10 @@
   function turn(dir) {
     if (!sized()) return;
     window.hoshiHighlights.clearSearchHighlight();
+    if (continuous) {
+      hc.scrollPage(dir);
+      return;
+    }
     window.hoshiParagraph.finishTextAnimation();
     if (r.paginate(dir) === "limit") {
       parent.postMessage({ hoshi: "boundary", dir }, "*");
@@ -636,16 +700,40 @@
     }
   });
 
+  if (continuous) {
+    window.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+      const dir =
+        e.key === "ArrowDown" || e.key === "PageDown" || (e.key === " " && !e.shiftKey)
+          ? "forward"
+          : e.key === "ArrowUp" || e.key === "PageUp" || (e.key === " " && e.shiftKey)
+            ? "backward"
+            : null;
+      if (!dir) return;
+      e.preventDefault();
+      turn(dir);
+    });
+  }
+
   window.addEventListener(
     "wheel",
     (e) => {
       e.preventDefault();
+      if (continuous) {
+        if (!wheelDisabled) hc.scrollBy(e.deltaX, e.deltaY);
+        return;
+      }
       parent.postMessage({ hoshi: "wheel", dx: e.deltaX, dy: e.deltaY }, "*");
     },
     { passive: false },
   );
 
   function commitProgress(value) {
+    if (continuous) {
+      hc.report(true);
+      return;
+    }
     position = value;
     updateMarker();
     parent.postMessage({ hoshi: "progress", frac: position, jump: true }, "*");
@@ -660,10 +748,36 @@
       case "turn":
         turn(m.dir);
         break;
+      case "continuous-init":
+        hc.init(m.spine, spineIndex);
+        hc.prepare = prepareSection;
+        hc.onLoad = (spine) => parent.postMessage({ hoshi: "section-load", spine }, "*");
+        hc.onProgress = (p, jump) => parent.postMessage({ hoshi: "progress", frac: p.frac, spine: p.spine, jump }, "*");
+        break;
+      case "goto":
+        hc.goTo(m.spine, m.progress, m.fragment).then(() => {
+          restored = true;
+          hc.report(true);
+          r.notifyRestoreComplete();
+        });
+        break;
+      case "wheel-scroll":
+        if (!wheelDisabled) hc.scrollBy(m.dx, m.dy);
+        break;
+      case "wheel-disabled":
+        wheelDisabled = m.disabled;
+        break;
       case "restore":
         position = m.progress;
         applyCues(m.cues);
-        if (m.highlights) window.hoshiHighlights.applyHighlights(m.highlights);
+        if (m.highlights) applyHighlights(m.highlights);
+        if (continuous) {
+          hc.goTo(spineIndex, m.progress).then(() => {
+            restored = true;
+            r.notifyRestoreComplete();
+          });
+          break;
+        }
         r.restoreProgress(m.progress).then(() => {
           restored = true;
           requestAnimationFrame(() => requestAnimationFrame(updateMarker));
@@ -671,7 +785,15 @@
         break;
       case "fragment":
         applyCues(m.cues);
-        if (m.highlights) window.hoshiHighlights.applyHighlights(m.highlights);
+        if (m.highlights) applyHighlights(m.highlights);
+        if (continuous) {
+          hc.goTo(spineIndex, 0, m.fragment).then(() => {
+            restored = true;
+            hc.report(true);
+            r.notifyRestoreComplete();
+          });
+          break;
+        }
         r.jumpToFragment(m.fragment).then(() => {
           restored = true;
           commitProgress(r.calculateProgress());
@@ -693,7 +815,13 @@
         window.hoshiHighlights.removeHighlight(m.id);
         break;
       case "search-highlight":
-        window.hoshiHighlights.showSearchHighlight(m.offset, m.length);
+        window.hoshiHighlights.showSearchHighlight(m.offset, m.length, sectionRoot(m.spine) ?? undefined);
+        break;
+      case "section-data":
+        if (hc.sections.get(m.spine)?.loaded) {
+          applyCues(m.cues, m.spine);
+          if (m.highlights) applyHighlights(m.highlights, m.spine);
+        }
         break;
       case "highlight":
         window.hoshiSelection.highlightSelection(m.count);
@@ -724,7 +852,7 @@
         r.clearSasayakiCue();
         break;
       case "sasayaki-cues":
-        applyCues(m.cues);
+        applyCues(m.cues, m.spine);
         break;
       case "text-animation":
         textSpeed = m.speed;
@@ -737,7 +865,7 @@
         parent.postMessage({ hoshi: "page-cues", ids: window.hoshiParagraph.pageSasayakiCues(), play: m.play }, "*");
         break;
       case "sasayaki-image": {
-        const result = r.scrollToSasayakiImage(m.index);
+        const result = r.scrollToSasayakiImage(m.index, sectionRoot(m.spine) ?? undefined);
         if (typeof result?.progress === "number") commitProgress(result.progress);
         parent.postMessage({ hoshi: "sasayaki-image-result", paused: result !== null }, "*");
         break;
@@ -768,15 +896,15 @@
     });
   }
 
-  function setupImages() {
-    document
+  function setupImages(root = document) {
+    root
       .querySelectorAll('svg[preserveAspectRatio="none"]')
       .forEach((svg) => svg.removeAttribute("preserveAspectRatio"));
-    document.querySelectorAll("svg").forEach((svg) => {
+    root.querySelectorAll("svg").forEach((svg) => {
       const image = svg.querySelector("image");
       if (image) setupImage(image, image.href.baseVal, false, svg);
     });
-    const images = document.querySelectorAll("img");
+    const images = root.querySelectorAll("img");
     const promises = Array.from(images).map(
       (img) =>
         new Promise((resolve) => {
@@ -798,6 +926,11 @@
         }),
     );
     return Promise.all(promises).then(() => new Promise((r) => setTimeout(r, 50)));
+  }
+
+  function prepareSection(el) {
+    applyFurigana(el);
+    return setupImages(el);
   }
 
   setupImages()

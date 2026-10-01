@@ -2,9 +2,14 @@ window.hoshiHighlights = {
     highlights: new Map(),
     searchHighlight: null,
     
+    rootOf(node) {
+        return node.parentElement?.closest('hoshi-section') || document.body;
+    },
+    
     createHighlight(color, id) {
         const selection = window.getSelection();
         const range = selection.getRangeAt(0);
+        const root = this.rootOf(range.startContainer);
         
         const startPrefix = range.startContainer.textContent.substring(0, range.startOffset);
         const endPrefix = range.endContainer.textContent.substring(0, range.endOffset);
@@ -16,7 +21,7 @@ window.hoshiHighlights = {
             return null;
         }
         
-        const existing = this.findHighlight(rawStart, rawEnd - rawStart);
+        const existing = this.findHighlight(rawStart, rawEnd - rawStart, root);
         if (existing) {
             selection.removeAllRanges();
             return this.updateHighlight(existing, color);
@@ -26,7 +31,7 @@ window.hoshiHighlights = {
         fragment.querySelectorAll('rt, rp').forEach(el => el.remove());
         const text = fragment.textContent;
         
-        const textFurigana = this.collectSegments(rawStart, Array.from(text).length).map(segment => {
+        const textFurigana = this.collectSegments(rawStart, Array.from(text).length, false, root).map(segment => {
             const t = segment.node.textContent.slice(segment.start, segment.end);
             let rt = segment.node.parentElement.nextElementSibling;
             while (rt?.matches('rp')) {
@@ -37,8 +42,8 @@ window.hoshiHighlights = {
         
         selection.removeAllRanges();
         
-        this.wrapHighlight({ id, color, offset: rawStart, text });
-        window.hoshiReader.buildNodeOffsets();
+        this.wrapHighlight({ id, color, offset: rawStart, text }, root);
+        window.hoshiReader.refreshOffsets(root);
         
         requestAnimationFrame(() => {
             document.body.style.transform = 'translateZ(0)';
@@ -47,12 +52,12 @@ window.hoshiHighlights = {
             });
         });
         
-        return { start, offset: rawStart, text, textFurigana: textFurigana !== text ? textFurigana : null };
+        return { start, offset: rawStart, text, textFurigana: textFurigana !== text ? textFurigana : null, spine: root.hoshiSection?.i ?? null };
     },
     
-    findHighlight(offset, length) {
+    findHighlight(offset, length, root) {
         for (const [id, entry] of this.highlights) {
-            if (entry.offset === offset && entry.length === length) {
+            if (entry.offset === offset && entry.length === length && entry.root === root) {
                 return id;
             }
         }
@@ -72,7 +77,7 @@ window.hoshiHighlights = {
         return { id };
     },
     
-    collectSegments(offset, length, filtered) {
+    collectSegments(offset, length, filtered, root) {
         const end = offset + length;
         const segments = [];
         let cursor = 0;
@@ -88,7 +93,7 @@ window.hoshiHighlights = {
         };
         
         let node;
-        const walker = window.hoshiReader.createWalker();
+        const walker = window.hoshiReader.createWalker(root);
         while (cursor < end && (node = walker.nextNode())) {
             const text = node.textContent;
             let i = 0;
@@ -118,10 +123,10 @@ window.hoshiHighlights = {
         return segments;
     },
     
-    wrapHighlight(highlight) {
+    wrapHighlight(highlight, root) {
         const { id, color, offset, text } = highlight;
         const length = window.hoshiReader.countRawChars(text);
-        const segments = this.collectSegments(offset, length);
+        const segments = this.collectSegments(offset, length, false, root);
         if (!segments.length) {
             return;
         }
@@ -141,14 +146,22 @@ window.hoshiHighlights = {
             wrappers.push(wrapper);
         }
         wrappers.reverse();
-        this.highlights.set(id, { color, offset, length, wrappers });
+        this.highlights.set(id, { color, offset, length, wrappers, root: root || document.body });
     },
     
-    applyHighlights(highlights) {
+    applyHighlights(highlights, root) {
         for (const h of highlights) {
-            this.wrapHighlight(h);
+            this.wrapHighlight(h, root);
         }
-        window.hoshiReader.buildNodeOffsets();
+        window.hoshiReader.refreshOffsets(root);
+    },
+    
+    drop(root) {
+        for (const [id, entry] of this.highlights) {
+            if (entry.root === root) {
+                this.highlights.delete(id);
+            }
+        }
     },
     
     removeHighlight(id) {
@@ -159,7 +172,7 @@ window.hoshiHighlights = {
         
         window.hoshiReader.unwrap(entry.wrappers);
         this.highlights.delete(id);
-        window.hoshiReader.buildNodeOffsets();
+        window.hoshiReader.refreshOffsets(entry.root);
         
         requestAnimationFrame(() => {
             document.body.style.transform = 'translateZ(0)';
@@ -169,14 +182,14 @@ window.hoshiHighlights = {
         });
     },
     
-    showSearchHighlight(offset, length) {
+    showSearchHighlight(offset, length, root) {
         if (!this.searchHighlight) {
             this.searchHighlight = new Highlight();
             CSS.highlights.set('hoshi-search', this.searchHighlight);
         }
         this.searchHighlight.clear();
         
-        for (const segment of this.collectSegments(offset, length, true)) {
+        for (const segment of this.collectSegments(offset, length, true, root)) {
             const range = document.createRange();
             range.setStart(segment.node, segment.start);
             range.setEnd(segment.node, segment.end);

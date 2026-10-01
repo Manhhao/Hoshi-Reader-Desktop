@@ -62,23 +62,41 @@ window.hoshiReader = {
         await document.fonts.ready;
     },
 
-    buildNodeOffsets() {
-        const offsets = new WeakMap();
-        const rawOffsets = new WeakMap();
-        const walker = this.createWalker();
+    buildNodeOffsets(root) {
+        const offsets = root ? this.nodeStartOffsets : new WeakMap();
+        const rawOffsets = root ? this.nodeStartRawOffsets : new WeakMap();
+        const walker = this.createWalker(root);
+        const nodes = [];
         let count = 0;
         let rawCount = 0;
         let node;
-        
+
         while (node = walker.nextNode()) {
+            const length = this.countChars(node.textContent);
             offsets.set(node, count);
             rawOffsets.set(node, rawCount);
-            count += this.countChars(node.textContent);
+            if (length > 0) {
+                nodes.push({ node, start: count, length });
+            }
+            count += length;
             rawCount += this.countRawChars(node.textContent);
         }
-        
+
         this.nodeStartOffsets = offsets;
         this.nodeStartRawOffsets = rawOffsets;
+        return { nodes, total: count };
+    },
+    
+    refreshOffsets(root) {
+        if (root?.hoshiSection) {
+            window.hoshiContinuous.index(root.hoshiSection);
+        } else {
+            this.buildNodeOffsets();
+        }
+    },
+    
+    currentProgress() {
+        return window.hoshiContinuous?.sections.size ? 0 : this.calculateProgress();
     },
     
     calculateProgress() {
@@ -273,6 +291,9 @@ window.hoshiReader = {
     },
     
     scrollToRange(range) {
+        if (window.hoshiContinuous?.sections.size) {
+            return window.hoshiContinuous.reveal(range);
+        }
         const context = this.getScrollContext();
         if (context.pageSize <= 0) {
             return false;
@@ -296,7 +317,7 @@ window.hoshiReader = {
         return true;
     },
     
-    collectSasayakiCueRanges(cues) {
+    collectSasayakiCueRanges(cues, root) {
         const cueRanges = new Map();
         if (!cues.length) {
             return [];
@@ -330,7 +351,7 @@ window.hoshiReader = {
         };
         
         let node;
-        const walker = this.createWalker();
+        const walker = this.createWalker(root);
         while (current && (node = walker.nextNode())) {
             const text = node.textContent;
             let i = 0;
@@ -368,10 +389,10 @@ window.hoshiReader = {
         }));
     },
     
-    applySasayakiCues(cues) {
-        this.resetSasayakiCues();
+    applySasayakiCues(cues, root) {
+        this.resetSasayakiCues(root);
         
-        const cueRanges = this.collectSasayakiCueRanges(cues);
+        const cueRanges = this.collectSasayakiCueRanges(cues, root);
         const range = document.createRange();
         for (let i = cueRanges.length - 1; i >= 0; i--) {
             const { id, ranges } = cueRanges[i];
@@ -396,7 +417,7 @@ window.hoshiReader = {
             this.cueWrappers.set(id, wrappers);
         }
         
-        this.buildNodeOffsets();
+        this.refreshOffsets(root);
     },
     
     highlightSasayakiCue(cueId, reveal) {
@@ -414,7 +435,7 @@ window.hoshiReader = {
             const range = document.createRange();
             range.selectNodeContents(wrappers[0]);
             if (this.scrollToRange(range)) {
-                return this.calculateProgress();
+                return this.currentProgress();
             }
         }
         
@@ -431,8 +452,8 @@ window.hoshiReader = {
         this.activeCueId = null;
     },
     
-    scrollToSasayakiImage(index) {
-        const el = document.querySelectorAll('img, image')[index];
+    scrollToSasayakiImage(index, root) {
+        const el = (root || document).querySelectorAll('img, image')[index];
         if (!el || !(el.classList.contains('block-img') || el.namespaceURI === 'http://www.w3.org/2000/svg')) {
             return null;
         }
@@ -440,13 +461,31 @@ window.hoshiReader = {
         const range = document.createRange();
         range.selectNode(el);
         const scrolled = this.scrollToRange(range);
-        return { progress: scrolled ? this.calculateProgress() : null };
+        return { progress: scrolled ? this.currentProgress() : null };
     },
     
-    resetSasayakiCues() {
-        this.cueWrappers.forEach(wrappers => this.unwrap(wrappers));
-        this.cueWrappers.clear();
-        this.activeCueId = null;
+    resetSasayakiCues(root) {
+        this.cueWrappers.forEach((wrappers, id) => {
+            if (root && !root.contains(wrappers[0])) {
+                return;
+            }
+            this.unwrap(wrappers);
+            this.cueWrappers.delete(id);
+            if (this.activeCueId === id) {
+                this.activeCueId = null;
+            }
+        });
+    },
+    
+    dropCues(root) {
+        this.cueWrappers.forEach((wrappers, id) => {
+            if (root.contains(wrappers[0])) {
+                this.cueWrappers.delete(id);
+                if (this.activeCueId === id) {
+                    this.activeCueId = null;
+                }
+            }
+        });
     },
     
     unwrap(wrappers) {

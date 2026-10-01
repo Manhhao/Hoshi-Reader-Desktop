@@ -401,7 +401,8 @@ window.hoshiSelection = {
             sentence,
             rect: this.getSelectionRect(x, y),
             normalizedOffset,
-            clozeOffset
+            clozeOffset,
+            spine: window.hoshiContinuous?.spineOf(hit.node)
         });
         
         return text;
