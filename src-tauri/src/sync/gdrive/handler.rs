@@ -188,11 +188,13 @@ pub async fn upload(data: Vec<u8>, file_name: &str, folder: &str) -> Result<()> 
 pub async fn download(
     file_name: &str,
     folder: Option<&str>,
+    listed: Option<GoogleDriveFile>,
     on_progress: &(dyn Fn(f64) + Sync),
 ) -> Result<Vec<u8>> {
-    let file = match folder {
-        Some(folder) => children(folder, Some(file_name)).await?.into_iter().next(),
-        None => None,
+    let file = match (listed, folder) {
+        (Some(file), _) => Some(file),
+        (None, Some(folder)) => children(folder, Some(file_name)).await?.into_iter().next(),
+        (None, None) => None,
     };
     let Some(file) = file else {
         return Err(GoogleDriveError::Api(format!(

@@ -34,6 +34,7 @@ pub struct GoogleDriveSyncManager {
     pub last_sync: Option<i64>,
     pub cache: GoogleDriveSyncCache,
     remote_books: HashMap<String, (HashMap<String, String>, SyncBook)>,
+    listed_files: HashMap<(String, String), GoogleDriveFile>,
     state_task: Option<SyncTask>,
     file_transfer_task: Option<SyncTask>,
     poll_task: Option<SyncTask>,
@@ -79,7 +80,7 @@ pub enum Direction {
 pub struct Progress {
     pub done: usize,
     pub total: usize,
-    pub current: Option<String>,
+    pub current: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -467,6 +468,7 @@ async fn run_sync(book: Option<BookMetadata>) -> SyncResult<()> {
         .chain(pending)
         .filter(|key| key != ".shelves")
         .collect();
+    prefetch(&remote, &keys).await?;
     for key in &keys {
         record_book(key, Phase::State, sync_book(key, remote.files(key)).await)?;
     }
@@ -519,6 +521,7 @@ pub fn start_file_sync() {
             let mut manager = shared();
             manager.file_transfer_task = None;
             manager.progress = None;
+            manager.listed_files.clear();
             if let Err(error) = result
                 && !task::is_cancelled()
             {
@@ -533,18 +536,44 @@ pub fn start_file_sync() {
 }
 
 async fn run_file_sync() -> SyncResult<()> {
-    let mut folders = HashMap::new();
     let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
     keys.sort();
     begin_transfers(&keys);
-    for key in keys {
-        task::check_cancellation()?;
-        set_current_transfer(&key);
-        let result = sync_files(&key, &mut folders).await;
-        record_book(&key, Phase::File, result)?;
-        finish_transfer(&key);
+    if shared().progress.is_some() {
+        let files = list_files().await?;
+        shared().listed_files = files;
     }
-    Ok(())
+    let transfers = keys
+        .into_iter()
+        .map(|key| async move {
+            task::check_cancellation()?;
+            set_current_transfer(&key);
+            let result = sync_files(&key, &mut HashMap::new()).await;
+            record_book(&key, Phase::File, result)?;
+            finish_transfer(&key);
+            Ok(())
+        })
+        .collect();
+    task::concurrent(transfers).await
+}
+
+async fn list_files() -> SyncResult<HashMap<(String, String), GoogleDriveFile>> {
+    let mut listed = HashMap::new();
+    for file in drive::list("'me' in owners").await? {
+        if let Some(parent) = file.parents.as_ref().and_then(|parents| parents.first()) {
+            listed
+                .entry((parent.clone(), file.name.clone()))
+                .or_insert(file);
+        }
+    }
+    Ok(listed)
+}
+
+fn listed_file(parent: &str, name: &str) -> Option<GoogleDriveFile> {
+    shared()
+        .listed_files
+        .get(&(parent.to_string(), name.to_string()))
+        .cloned()
 }
 
 async fn sync_files(key: &str, folders: &mut Folders) -> SyncResult<()> {
@@ -614,7 +643,7 @@ fn begin_transfers(keys: &[String]) {
         manager.progress = (!transfers.is_empty()).then(|| Progress {
             done: 0,
             total: transfers.len(),
-            current: None,
+            current: Vec::new(),
         });
         manager.transfers = transfers;
     }
@@ -623,7 +652,7 @@ fn begin_transfers(keys: &[String]) {
 
 fn set_current_transfer(key: &str) {
     if let Some(progress) = &mut shared().progress {
-        progress.current = Some(key.to_string());
+        progress.current.push(key.to_string());
     }
     publish();
 }
@@ -631,6 +660,9 @@ fn set_current_transfer(key: &str) {
 fn finish_transfer(key: &str) {
     {
         let mut manager = shared();
+        if let Some(progress) = &mut manager.progress {
+            progress.current.retain(|current| current != key);
+        }
         if !manager.transfers.iter().any(|item| item.key == key) {
             return;
         }
@@ -799,15 +831,8 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
     };
     task::check_cancellation()?;
 
-    let mut versions: HashMap<String, String> = files
-        .iter()
-        .map(|file| (file.id.clone(), file.version.clone()))
-        .collect();
-    let pending = store().state.books.get(key).map(|record| record.pending);
-    if files.len() == 1
-        && pending == Some(false)
-        && shared().cache.book_versions.get(key) == Some(&versions)
-    {
+    let mut versions = file_versions(&files);
+    if unchanged(key, &files) {
         return Ok(());
     }
     if shared().cache.book_versions.remove(key).is_some() {
@@ -858,6 +883,53 @@ async fn sync_book(key: &str, listed: Option<Vec<GoogleDriveFile>>) -> SyncResul
         .book_versions
         .insert(key.to_string(), versions);
     save_cache()
+}
+
+fn file_versions(files: &[GoogleDriveFile]) -> HashMap<String, String> {
+    files
+        .iter()
+        .map(|file| (file.id.clone(), file.version.clone()))
+        .collect()
+}
+
+fn unchanged(key: &str, files: &[GoogleDriveFile]) -> bool {
+    files.len() == 1
+        && store()
+            .state
+            .books
+            .get(key)
+            .is_some_and(|record| !record.pending)
+        && shared().cache.book_versions.get(key) == Some(&file_versions(files))
+}
+
+async fn prefetch(remote: &RemoteChanges, keys: &BTreeSet<String>) -> SyncResult<()> {
+    let downloads = keys
+        .iter()
+        .filter_map(|key| {
+            let files = remote.files(key).filter(|files| !files.is_empty())?;
+            let versions = file_versions(&files);
+            if unchanged(key, &files)
+                || shared()
+                    .remote_books
+                    .get(key)
+                    .is_some_and(|(cached, _)| *cached == versions)
+            {
+                return None;
+            }
+            let key = key.clone();
+            Some(async move {
+                match read_state(&files, SyncBook::merge).await {
+                    Ok(Some(book)) => {
+                        shared().remote_books.insert(key, (versions, book));
+                    }
+                    Err(error) if error.stops_run() => return Err(error),
+                    _ => {}
+                }
+                Ok(())
+            })
+        })
+        .collect();
+    task::concurrent(downloads).await
 }
 
 async fn read_state<T: serde::de::DeserializeOwned>(
@@ -1008,8 +1080,12 @@ async fn upload_file(key: &str, file_type: SyncFileType, folders: &mut Folders) 
         return Ok(());
     }
 
-    let folder = file_folder(folders, key, record.generation, true).await?;
-    drive::upload(data, &name, &folder.unwrap()).await?;
+    let folder = file_folder(folders, key, record.generation, true)
+        .await?
+        .unwrap();
+    if listed_file(&folder, &name).is_none() {
+        drive::upload(data, &name, &folder).await?;
+    }
     task::check_cancellation()?;
     if !can_publish(key, file_type, source, record.generation) {
         return Ok(());
@@ -1047,7 +1123,12 @@ async fn file_folder(
     if let Some(folder) = folders.get(&id) {
         return Ok(Some(folder.clone()));
     }
-    let folder = drive::file_folder(&book_folder(), key, generation, create).await?;
+    let listed = listed_file(&book_folder(), key)
+        .and_then(|book| listed_file(&book.id, &generation.to_string()));
+    let folder = match listed {
+        Some(folder) => Some(folder.id),
+        None => drive::file_folder(&book_folder(), key, generation, create).await?,
+    };
     if let Some(folder) = &folder {
         folders.insert(id, folder.clone());
     }
@@ -1104,7 +1185,10 @@ async fn download_file(
 
     let folder = file_folder(folders, key, record.generation, false).await?;
 
-    let data = drive::download(&name, folder.as_deref(), on_progress).await?;
+    let listed = folder
+        .as_deref()
+        .and_then(|folder| listed_file(folder, &name));
+    let data = drive::download(&name, folder.as_deref(), listed, on_progress).await?;
 
     task::check_cancellation()?;
 

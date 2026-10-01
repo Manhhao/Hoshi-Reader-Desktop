@@ -1694,7 +1694,7 @@
                     <div class="select-text whitespace-pre-line text-xs text-error">{item.error}</div>
                   {/if}
                 </div>
-                {#if item.key === driveStatus.progress?.current}
+                {#if driveStatus.progress?.current.includes(item.key)}
                   <span class="loading loading-spinner loading-xs"></span>
                 {/if}
               </li>

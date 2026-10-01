@@ -1,6 +1,7 @@
 use std::future::Future;
+use std::sync::Arc;
 
-use tokio::sync::watch;
+use tokio::sync::{Semaphore, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::sync::client::GoogleDriveError;
@@ -30,6 +31,36 @@ pub async fn sleep(seconds: u64) -> Result<(), GoogleDriveError> {
         _ = tokio::time::sleep(std::time::Duration::from_secs(seconds)) => Ok(()),
         _ = token.cancelled() => Err(GoogleDriveError::Cancelled),
     }
+}
+
+pub async fn concurrent<F, E>(futures: Vec<F>) -> Result<(), E>
+where
+    F: Future<Output = Result<(), E>> + Send + 'static,
+    E: Send + 'static,
+{
+    let token = current().unwrap_or_default();
+    let limit = Arc::new(Semaphore::new(8));
+    let handles: Vec<_> = futures
+        .into_iter()
+        .map(|future| {
+            let limit = limit.clone();
+            tauri::async_runtime::spawn(CURRENT.scope(token.clone(), async move {
+                let Ok(_permit) = limit.acquire().await else {
+                    return Ok(());
+                };
+                let result = future.await;
+                if result.is_err() {
+                    limit.close();
+                }
+                result
+            }))
+        })
+        .collect();
+    let mut result = Ok(());
+    for handle in handles {
+        result = result.and(handle.await.unwrap());
+    }
+    result
 }
 
 #[derive(Clone)]

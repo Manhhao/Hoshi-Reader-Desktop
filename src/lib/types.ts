@@ -121,7 +121,7 @@ export type GoogleDriveSyncStatus = {
   isSyncing: boolean;
   errorMessage: string | null;
   queue: SyncQueueItem[];
-  progress: { done: number; total: number; current: string | null } | null;
+  progress: { done: number; total: number; current: string[] } | null;
 };
 
 export type SyncBook = {
