@@ -64,9 +64,7 @@ fn not_authenticated() -> String {
 }
 
 pub fn is_authenticated() -> bool {
-    get_token("accessToken").is_some()
-        && get_token("refreshToken").is_some()
-        && get_token("clientId").as_deref() == Some(CLIENT_ID)
+    get_token("accessToken").is_some() && get_token("refreshToken").is_some()
 }
 
 pub fn access_token() -> Result<String, String> {
@@ -132,7 +130,6 @@ async fn authorize() -> Result<(), String> {
     if let Some(refresh) = &tokens.refresh_token {
         save_token("refreshToken", refresh);
     }
-    save_token("clientId", CLIENT_ID);
     Ok(())
 }
 
@@ -152,14 +149,13 @@ async fn post_token_form(
 pub async fn refresh_access_token() -> Result<String, GoogleDriveError> {
     let connection = client::connection_id();
 
-    let (Some(refresh_token), Some(client_id)) = (get_token("refreshToken"), get_token("clientId"))
-    else {
+    let Some(refresh_token) = get_token("refreshToken") else {
         return Err(not_authenticated().into());
     };
 
     let response = client::cancellable(post_token_form(
         &[
-            ("client_id", client_id.as_str()),
+            ("client_id", CLIENT_ID),
             ("client_secret", CLIENT_SECRET),
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token.as_str()),
