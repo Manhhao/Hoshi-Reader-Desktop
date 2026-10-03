@@ -20,6 +20,8 @@ export type ReaderConfig = {
   customInfoColor: string;
   verticalWriting: boolean;
   paragraphMode: boolean;
+  sentencesPerPage: number;
+  splitDialogue: boolean;
   textAnimation: boolean;
   textSpeed: number;
   clickToAdvance: boolean;
@@ -63,6 +65,8 @@ const defaults: ReaderConfig = {
   customInfoColor: "#999999",
   verticalWriting: true,
   paragraphMode: false,
+  sentencesPerPage: 0,
+  splitDialogue: false,
   textAnimation: false,
   textSpeed: 35,
   clickToAdvance: true,

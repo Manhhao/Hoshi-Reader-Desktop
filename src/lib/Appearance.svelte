@@ -201,6 +201,24 @@
     onchange={() => save(onReload)}
   />
   {#if readerConfig.paragraphMode}
+    <SettingSlider
+      label="Sentences per Page"
+      {compact}
+      bind:value={readerConfig.sentencesPerPage}
+      display={readerConfig.sentencesPerPage === 0 ? "Off" : `${readerConfig.sentencesPerPage}`}
+      min={0}
+      max={10}
+      step={1}
+      onchange={() => save(onReload)}
+    />
+    {#if readerConfig.sentencesPerPage > 0}
+      <SettingToggle
+        label="Split up Dialogue"
+        {compact}
+        bind:checked={readerConfig.splitDialogue}
+        onchange={() => save(onReload)}
+      />
+    {/if}
     <SettingToggle
       label="Animation"
       {compact}

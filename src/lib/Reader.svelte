@@ -175,7 +175,7 @@
         `&adv=${readerConfig.layoutAdvanced ? 1 : 0}&lh=${readerConfig.lineHeight}` +
         `&cs=${readerConfig.characterSpacing}&ps=${readerConfig.paragraphSpacing}` +
         `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
-        `&pm=${readerConfig.paragraphMode ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
+        `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.sentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
