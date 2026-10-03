@@ -85,6 +85,7 @@
       : `-webkit-column-axis: horizontal !important; column-width: 100vw !important; column-gap: ${paddingX}vw !important;`;
     style.textContent = `
       :root { color-scheme: light dark; }
+      :root { ${vertical ? `--hoshi-content-width: ${100 - paddingX}vw` : `--hoshi-content-height: ${100 - paddingY}vh`}; }
       html { background: transparent !important; }
       @media (prefers-color-scheme: light) { :root { --hoshi-text-color: #000; } }
       @media (prefers-color-scheme: dark) { :root { --hoshi-text-color: #fff; } }
@@ -93,6 +94,8 @@
         overflow: hidden !important;
         height: 100vh !important;
         width: 100vw !important;
+        max-height: none !important;
+        max-width: none !important;
         margin: 0 !important;
         padding: 0 !important;
         color: var(--hoshi-text-color) !important;

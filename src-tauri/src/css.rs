@@ -6,6 +6,8 @@ static CALIBRE_RULE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?ms)^(\s*\.(?:calibre\d*|body|c\d*|p\d+)\s*)\{(.*?)\}").unwrap()
 });
 
+static RULE_BODY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^{}]*)\}").unwrap());
+
 const WRITING_MODE_PROPERTIES: [&str; 3] =
     ["writing-mode", "-webkit-writing-mode", "-epub-writing-mode"];
 
@@ -29,6 +31,10 @@ pub fn sanitize_css(css: &str) -> String {
             .collect::<Vec<_>>()
             .join(";");
         format!("{selector}{{{cleaned}}}")
+    });
+    let result = RULE_BODY.replace_all(&result, |caps: &Captures| match content_limit(&caps[1]) {
+        Some(limit) => format!("{{{};{limit}}}", &caps[1]),
+        None => caps[0].to_string(),
     });
     if did_strip_line_height {
         format!("{result}\nbody {{ line-height: 1.65; }}\n")
@@ -55,6 +61,30 @@ fn sanitize_declaration(declaration: &str, strip_height: bool) -> Option<String>
         }
         _ => Some(declaration.to_string()),
     }
+}
+
+fn content_limit(body: &str) -> Option<String> {
+    let declarations: Vec<&str> = body.split(';').collect();
+    let value = |names: &[&str]| {
+        declarations
+            .iter()
+            .find(|d| names.contains(&property_name(d).as_str()))
+            .and_then(|d| d.split_once(':'))
+            .map(|(_, value)| value.trim().to_lowercase())
+    };
+    let writing_mode = value(&WRITING_MODE_PROPERTIES)?;
+    let size = if writing_mode.starts_with("horizontal") {
+        "width"
+    } else if writing_mode.starts_with("vertical") {
+        "height"
+    } else {
+        return None;
+    };
+    let percent: f64 = value(&[size])?.strip_suffix('%')?.trim().parse().ok()?;
+    Some(format!(
+        "max-{size}:calc(var(--hoshi-content-{size}) * {})",
+        percent / 100.0
+    ))
 }
 
 fn property_name(declaration: &str) -> String {
