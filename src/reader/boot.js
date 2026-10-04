@@ -45,6 +45,12 @@
   const scanModifier = params.get("mod");
   const scanDelay = Number(params.get("sdl"));
   const clickLookup = params.get("cl");
+  const clickZone = Number(params.get("cz")) / 100;
+  function clickEdge(x) {
+    if (x < window.innerWidth * clickZone) return "left";
+    if (x > window.innerWidth * (1 - clickZone)) return "right";
+    return null;
+  }
   const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
   let scanKeyHeld = false;
   function modifierHeld(e) {
@@ -436,6 +442,7 @@
   });
   let mouseDownAt = null;
   let secondaryLookup = false;
+  let selectionDismissed = false;
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
     clearTimeout(scanTimer);
@@ -455,7 +462,8 @@
     if (middle) e.preventDefault();
     secondaryLookup = secondary;
     mouseDownAt = { x: e.clientX, y: e.clientY };
-    if (clickAdvance && e.detail > 1) e.preventDefault();
+    selectionDismissed = !window.getSelection().isCollapsed || !!window.hoshiSelection.selection;
+    if ((clickAdvance || clickEdge(e.clientX)) && e.detail > 1) e.preventDefault();
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
   });
@@ -492,12 +500,12 @@
     }
     const lookup = button !== 0 || clickLookup === "left";
     if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
-      parent.postMessage({ hoshi: "lookup-miss" }, "*");
+      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
       return;
     }
     const selected = window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
     if (!selected && button === 0) {
-      parent.postMessage({ hoshi: "lookup-miss" }, "*");
+      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
     }
   }
   document.addEventListener("click", (e) => {

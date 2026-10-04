@@ -178,7 +178,7 @@
         `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.sentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
-        `&sdl=${hotkeyConfig.scanDelay}` +
+        `&sdl=${hotkeyConfig.scanDelay}&cz=${hotkeyConfig.pageClickZone}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
         `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}` +
         `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
@@ -1044,7 +1044,9 @@
         break;
       case "lookup-miss":
         closePopups();
-        if (readerConfig.paragraphMode && readerConfig.clickToAdvance && !pressDismissed) postTurn("forward");
+        if (pressDismissed || m.dismissed) break;
+        if (m.edge) postTurn((m.edge === "right") !== (vertical && hotkeyConfig.reversePageVertical) ? "forward" : "backward");
+        else if (readerConfig.paragraphMode && readerConfig.clickToAdvance) postTurn("forward");
         break;
       case "press":
         pressDismissed = popups.length > 0 || readerPanel !== null || showBar;

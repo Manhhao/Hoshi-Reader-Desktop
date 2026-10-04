@@ -14,6 +14,7 @@ export type HotkeyConfig = {
   previousPage: string;
   nextPage: string;
   reversePageVertical: boolean;
+  pageClickZone: number;
 };
 
 const defaults: HotkeyConfig = {
@@ -28,6 +29,7 @@ const defaults: HotkeyConfig = {
   previousPage: "ArrowLeft",
   nextPage: "ArrowRight",
   reversePageVertical: true,
+  pageClickZone: 0,
 };
 
 export const readerHotkeys = [

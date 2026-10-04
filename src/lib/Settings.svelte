@@ -161,10 +161,10 @@
     await refreshSyncStatus();
   }
 
-  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay"> | null>(null);
+  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone"> | null>(null);
   let bindingError = $state("");
 
-  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay">, button: HTMLButtonElement) {
+  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone">, button: HTMLButtonElement) {
     button.focus();
     bindingKey = key;
     bindingError = "";
@@ -1357,6 +1357,15 @@
               </SettingRow>
             {/each}
             {#if section === "Reader"}
+              <SettingSlider
+                label="Page Turn Zones"
+                bind:value={hotkeyConfig.pageClickZone}
+                display={hotkeyConfig.pageClickZone ? `${hotkeyConfig.pageClickZone}%` : "Off"}
+                min={0}
+                max={50}
+                step={5}
+                onchange={saveHotkeyConfig}
+              />
               <SettingToggle
                 label="Reverse Direction in Vertical"
                 bind:checked={hotkeyConfig.reversePageVertical}
