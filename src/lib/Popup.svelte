@@ -151,11 +151,19 @@
           send({ hoshi: "kanji-result", id: m.id, result }),
         );
         break;
-      case "popup-selected":
-        onSelected(m.text, m.sentence, m.clozeOffset, m.rect).then((count) => {
+      case "popup-selected": {
+        const frame = iframeEl.getBoundingClientRect();
+        const container = iframeEl.parentElement!.getBoundingClientRect();
+        const rect = m.rect && {
+          ...m.rect,
+          x: m.rect.x + frame.left - container.left,
+          y: m.rect.y + frame.top - container.top,
+        };
+        onSelected(m.text, m.sentence, m.clozeOffset, rect).then((count) => {
           if (count) send({ hoshi: "highlight", count });
         });
         break;
+      }
       case "mine":
         onMine(m.content).then((result) => send({ hoshi: "mine-result", id: m.id, result }));
         break;
