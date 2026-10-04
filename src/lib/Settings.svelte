@@ -160,10 +160,10 @@
     await refreshSyncStatus();
   }
 
-  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel"> | null>(null);
+  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical"> | null>(null);
   let bindingError = $state("");
 
-  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel">, button: HTMLButtonElement) {
+  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical">, button: HTMLButtonElement) {
     button.focus();
     bindingKey = key;
     bindingError = "";
@@ -1343,6 +1343,13 @@
                 </button>
               </SettingRow>
             {/each}
+            {#if section === "Reader"}
+              <SettingToggle
+                label="Reverse Direction in Vertical"
+                bind:checked={hotkeyConfig.reversePageVertical}
+                onchange={saveHotkeyConfig}
+              />
+            {/if}
           </SettingsSection>
         {/each}
         {#if bindingError}

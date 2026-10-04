@@ -988,21 +988,33 @@
     postTurn(forward ? "forward" : "backward");
   }
 
-  function keyDirection(key: string): "forward" | "backward" | null {
-    if (key === "ArrowRight") return vertical ? "backward" : "forward";
-    if (key === "ArrowLeft") return vertical ? "forward" : "backward";
+  function pageDirection(key: string): "forward" | "backward" | null {
+    if (!key) return null;
+    const reverse = vertical && hotkeyConfig.reversePageVertical;
+    if (key === hotkeyConfig.nextPage) return reverse ? "backward" : "forward";
+    if (key === hotkeyConfig.previousPage) return reverse ? "forward" : "backward";
     return null;
   }
 
   const readerShortcutKeys = $derived(
     readerHotkeys
-      .filter((binding) => binding.key === "toggleTracking" || sasayaki?.hasAudio)
+      .filter((binding) => binding.key === "toggleTracking" || (binding.section === "Sasayaki" && sasayaki?.hasAudio))
       .map((binding) => hotkeyConfig[binding.key])
       .filter(Boolean),
   );
 
-  function onReaderHotkey(key: string) {
-    if (!readerShortcutKeys.includes(key) || document.querySelector("dialog[open]")) return;
+  const frameHotkeys = $derived(
+    [...readerShortcutKeys, hotkeyConfig.previousPage, hotkeyConfig.nextPage].filter(Boolean),
+  );
+
+  function onReaderHotkey(key: string, repeat = false) {
+    if (document.querySelector("dialog[open]")) return;
+    const dir = pageDirection(key);
+    if (dir) {
+      postTurn(dir);
+      return;
+    }
+    if (repeat || !readerShortcutKeys.includes(key)) return;
     if (key === hotkeyConfig.toggleTracking) toggleTracking();
     else if (key === hotkeyConfig.sasayakiPlayback) toggleSasayakiPlayback();
     else if (key === hotkeyConfig.sasayakiPreviousCue) sasayaki?.prevCue();
@@ -1045,7 +1057,7 @@
         releasePress();
         break;
       case "reader-hotkey":
-        onReaderHotkey(m.key);
+        onReaderHotkey(m.key, m.repeat);
         break;
       case "selection-menu":
         showSelectionMenu(e.source as Window);
@@ -1082,7 +1094,7 @@
         if (typeof m.href === "string") handleLink(m.href);
         break;
       case "ready": {
-        postToFrame({ hoshi: "reader-hotkeys", keys: [...readerShortcutKeys] });
+        postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
         const cues = sasayaki?.hasMatch ? sasayaki.cues(index) : null;
         const saved = $state.snapshot(chapterHighlights());
         if (pendingFragment) {
@@ -1232,17 +1244,12 @@
     if (!e.defaultPrevented && !e.isComposing && !e.ctrlKey && !e.altKey && !e.metaKey && !document.querySelector("dialog[open]")) {
       const key = normalizeHotkey(e.key);
       const control = (e.target as HTMLElement).closest("button, a, [role='button'], summary");
-      if (readerShortcutKeys.includes(key) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
+      const page = pageDirection(key) && !(e.target as HTMLElement).closest("aside");
+      if ((page || readerShortcutKeys.includes(key)) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
         e.preventDefault();
-        if (!e.repeat) onReaderHotkey(key);
-        return;
+        onReaderHotkey(key, e.repeat);
       }
     }
-    if ((e.target as HTMLElement).closest("aside")) return;
-    const dir = keyDirection(e.key);
-    if (!dir) return;
-    e.preventDefault();
-    postTurn(dir);
   }
 
   function settle() {
@@ -1284,7 +1291,7 @@
   });
 
   $effect(() => {
-    postToFrame({ hoshi: "reader-hotkeys", keys: [...readerShortcutKeys] });
+    postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
   });
 
   $effect(() => {

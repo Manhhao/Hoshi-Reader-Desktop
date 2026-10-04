@@ -10,6 +10,9 @@ export type HotkeyConfig = {
   sasayakiNextCue: string;
   sasayakiPlayback: string;
   toggleTracking: string;
+  previousPage: string;
+  nextPage: string;
+  reversePageVertical: boolean;
 };
 
 const defaults: HotkeyConfig = {
@@ -20,6 +23,9 @@ const defaults: HotkeyConfig = {
   sasayakiNextCue: "]",
   sasayakiPlayback: " ",
   toggleTracking: "p",
+  previousPage: "ArrowLeft",
+  nextPage: "ArrowRight",
+  reversePageVertical: true,
 };
 
 export const readerHotkeys = [
@@ -27,6 +33,8 @@ export const readerHotkeys = [
   { key: "sasayakiNextCue", label: "Next Cue", section: "Sasayaki" },
   { key: "sasayakiPlayback", label: "Play / Pause", section: "Sasayaki" },
   { key: "toggleTracking", label: "Pause / Resume Statistics", section: "Reader" },
+  { key: "previousPage", label: "Previous Page", section: "Reader" },
+  { key: "nextPage", label: "Next Page", section: "Reader" },
 ] as const;
 
 const store = persisted<HotkeyConfig>("hotkeys.config", defaults);

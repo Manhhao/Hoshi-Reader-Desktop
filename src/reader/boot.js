@@ -560,12 +560,6 @@
     }
   }
 
-  function keyDirection(key) {
-    if (key === "ArrowRight") return vertical ? "backward" : "forward";
-    if (key === "ArrowLeft") return vertical ? "forward" : "backward";
-    return null;
-  }
-
   window.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.isComposing || e.target.closest("input, textarea, select, [contenteditable]")) return;
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
@@ -583,14 +577,9 @@
       const control = e.target.closest("button, a, [role='button'], summary");
       if (readerHotkeys.includes(key) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
         e.preventDefault();
-        if (!e.repeat) parent.postMessage({ hoshi: "reader-hotkey", key }, "*");
-        return;
+        parent.postMessage({ hoshi: "reader-hotkey", key, repeat: e.repeat }, "*");
       }
     }
-    const dir = keyDirection(e.key);
-    if (!dir) return;
-    e.preventDefault();
-    turn(dir);
   });
 
   window.addEventListener(
