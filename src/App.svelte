@@ -39,6 +39,7 @@
   } from "./lib/shelves.svelte";
   import { shellConfig } from "./lib/shellConfig.svelte";
   import { configureSync, network } from "./lib/syncConfig.svelte";
+  import { initializeSharing } from "./lib/sharingConfig.svelte";
 
   type OpenedBook = {
     id: string;
@@ -201,6 +202,7 @@
   });
 
   refresh();
+  initializeSharing().catch((error) => message(String(error), { title: "Dictionary Sharing", kind: "error" }));
   loadShelves();
   configureSync().then(() => invoke("gdrive_sync_start"));
   loadCollapsedDictionaries();

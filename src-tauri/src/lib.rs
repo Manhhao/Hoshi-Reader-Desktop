@@ -17,6 +17,8 @@ mod menu_theme;
 mod pcm;
 mod sasayaki;
 mod search;
+mod sharing;
+mod sharing_server;
 mod statistics;
 mod sync;
 #[cfg(target_os = "macos")]
@@ -49,6 +51,7 @@ pub fn run() {
         .manage(OpenBook::default())
         .manage(LookupState::default())
         .manage(anki::AnkiState::default())
+        .manage(sharing::SharingState::default())
         .register_asynchronous_uri_scheme_protocol("book", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
@@ -67,7 +70,12 @@ pub fn run() {
                 responder.respond(sasayaki::audiobook_protocol(&app, request));
             });
         })
-        .register_uri_scheme_protocol("image", dict::image_protocol)
+        .register_asynchronous_uri_scheme_protocol("image", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(sharing::image_response(app, request).await);
+            });
+        })
         .register_asynchronous_uri_scheme_protocol("audio", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             let uri = request.uri().to_string();
@@ -161,6 +169,13 @@ pub fn run() {
             dict::set_dictionary_category,
             dict::delete_dictionary,
             dict::reorder_dictionaries,
+            sharing::sharing_get_settings,
+            sharing::sharing_configure,
+            sharing::sharing_remote_status,
+            sharing::sharing_remote_dictionaries,
+            sharing::sharing_import_dictionary,
+            sharing::sharing_lookup,
+            sharing::sharing_kanji,
             fonts::list_fonts,
             fonts::import_fonts,
             fonts::download_stroke_order_font,
@@ -209,6 +224,7 @@ pub fn run() {
             crash::init(app.handle());
             sync::init(app.handle());
             dict::initialize(app.handle());
+            sharing::initialize(app.handle());
             Ok(())
         })
         .on_window_event(|_window, _event| {
