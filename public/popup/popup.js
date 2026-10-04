@@ -2101,9 +2101,18 @@ window.renderPopup = function() {
         return;
     }
     container.clickAttached = true;
+    const mac = navigator.userAgent.includes('Macintosh');
+    const isSecondary = (e) => e.button === 2 || (mac && e.ctrlKey);
     let mouseDownAt = null;
+    let secondaryLookup = false;
     container.addEventListener('mousedown', (e) => {
         mouseDownAt = { x: e.clientX, y: e.clientY };
+        secondaryLookup = window.popupClickLookup === 'right' && isSecondary(e);
+    });
+    container.addEventListener('selectstart', (e) => {
+        if (secondaryLookup) {
+            e.preventDefault();
+        }
     });
     const isLookupTarget = (target) => target?.closest('.glossary-content') || target?.closest('.expr-tag');
     const lookupAt = (e) => {
@@ -2118,37 +2127,32 @@ window.renderPopup = function() {
             webkit.messageHandlers.tapOutside.postMessage(null);
         }
     };
-    container.addEventListener('click', (e) => {
+    container.addEventListener('mouseup', (e) => {
+        secondaryLookup = false;
         if (window.scanModifierHeld?.(e)) {
             return;
         }
+        const button = isSecondary(e) ? 2 : e.button;
         const target = e.target?.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
-        const kanjiTarget = target?.closest('.kanji-char');
-        if (kanjiTarget) {
-            webkit.messageHandlers.kanjiRedirect.postMessage(kanjiTarget.textContent).then(data => {
-                if (data) {
-                    redirectKanji(data);
-                }
-            });
-            return;
+        if (button === 0) {
+            const kanjiTarget = target?.closest('.kanji-char');
+            if (kanjiTarget) {
+                webkit.messageHandlers.kanjiRedirect.postMessage(kanjiTarget.textContent).then(data => {
+                    if (data) {
+                        redirectKanji(data);
+                    }
+                });
+                return;
+            }
+            if (target?.closest('summary')) {
+                return;
+            }
+            if (!isLookupTarget(target)) {
+                webkit.messageHandlers.tapOutside.postMessage(null);
+                return;
+            }
         }
-        if (target?.closest('summary')) {
-            return;
-        }
-        if (!isLookupTarget(target)) {
-            webkit.messageHandlers.tapOutside.postMessage(null);
-            return;
-        }
-        if (window.popupClickLookup === 'left') {
-            lookupAt(e);
-        }
-    });
-    container.addEventListener('contextmenu', (e) => {
-        if (window.popupClickLookup !== 'right' || window.scanModifierHeld?.(e)) {
-            return;
-        }
-        const target = e.target?.nodeType === Node.TEXT_NODE ? e.target.parentElement : e.target;
-        if (isLookupTarget(target)) {
+        if (button === { left: 0, middle: 1, right: 2 }[window.popupClickLookup] && isLookupTarget(target)) {
             lookupAt(e);
         }
     });

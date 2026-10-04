@@ -333,6 +333,7 @@
   }
 
   let highlightRange = null;
+  let secondaryRange = null;
   function selectionRangeAt(e) {
     const selection = window.getSelection();
     const range = selection && !selection.isCollapsed && !window.hoshiSelection.selection
@@ -346,12 +347,9 @@
   }
   document.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    const range = selectionRangeAt(e);
+    const range = clickLookup === "right" ? secondaryRange : selectionRangeAt(e);
     if (!range) {
-      if (clickLookup === "right") {
-        onClick(e, 2);
-        return;
-      }
+      if (clickLookup === "right") return;
       window.hoshiSelection.clearSelection();
       if (readerHotkeys.includes("Mouse:Right")) {
         parent.postMessage({ hoshi: "reader-hotkey", key: "Mouse:Right" }, "*");
@@ -424,47 +422,61 @@
     lastMouse = null;
   });
   let mouseDownAt = null;
+  let secondaryLookup = false;
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
     const token = mouseHotkeyTokens[e.button];
-    if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) {
+    const middle = e.button === 1 && clickLookup === "middle";
+    if (token && token !== "Mouse:Right" && !middle && readerHotkeys.includes(token)) {
       e.preventDefault();
       parent.postMessage({ hoshi: "reader-hotkey", key: token }, "*");
       return;
     }
     const secondary = e.button === 2 || (mac && e.ctrlKey);
-    if (secondary ? clickLookup !== "right" || selectionRangeAt(e) : e.button !== 0) {
+    secondaryRange = secondary ? selectionRangeAt(e) : null;
+    if (secondary ? clickLookup !== "right" || secondaryRange : e.button !== 0 && !middle) {
       if (!window.getSelection().isCollapsed) e.preventDefault();
       return;
     }
+    if (middle) e.preventDefault();
+    secondaryLookup = secondary;
     mouseDownAt = { x: e.clientX, y: e.clientY };
     if (clickAdvance && e.detail > 1) e.preventDefault();
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
   });
-  document.addEventListener("mouseup", () => {
+  document.addEventListener("selectstart", (e) => {
+    if (secondaryLookup) e.preventDefault();
+  });
+  document.addEventListener("mouseup", (e) => {
+    secondaryLookup = false;
+    if (e.button === 2 || (mac && e.ctrlKey)) {
+      if (clickLookup === "right" && !secondaryRange) onClick(e, 2);
+    } else if (e.button === 0 || (e.button === 1 && clickLookup === "middle")) {
+      onClick(e, e.button);
+    }
     setTimeout(() => parent.postMessage({ hoshi: "release" }, "*"));
   });
   document.addEventListener("auxclick", (e) => {
     const token = mouseHotkeyTokens[e.button];
-    if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
+    if (e.button === 1 && clickLookup === "middle") e.preventDefault();
+    else if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
   });
   function onClick(e, button) {
     if (modifierHeld(e)) return;
-    const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
-    if (window.hoshiParagraph.finishTextAnimation()) return;
-    if (anchor) {
-      e.preventDefault();
-      parent.postMessage({ hoshi: "link", href: anchor.href }, "*");
-      return;
-    }
     if (
       mouseDownAt &&
       (Math.abs(e.clientX - mouseDownAt.x) > 4 || Math.abs(e.clientY - mouseDownAt.y) > 4)
     ) {
       return;
     }
-    const lookup = button === 2 || clickLookup === "left";
+    const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (window.hoshiParagraph.finishTextAnimation()) return;
+    if (anchor) {
+      parent.postMessage({ hoshi: "link", href: anchor.href }, "*");
+      return;
+    }
+    const lookup = button !== 0 || clickLookup === "left";
     if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
       parent.postMessage({ hoshi: "lookup-miss" }, "*");
       return;
@@ -475,8 +487,7 @@
     }
   }
   document.addEventListener("click", (e) => {
-    if (mac && e.ctrlKey) return;
-    onClick(e, 0);
+    if (e.target instanceof Element && e.target.closest("a[href]")) e.preventDefault();
   });
 
   let resizeAnchor = null;

@@ -197,7 +197,10 @@
     if (!key) return;
     e.preventDefault();
     e.stopPropagation();
-    if (key === "Mouse:Right" && hotkeyConfig.clickLookup === "right") {
+    if (
+      (key === "Mouse:Right" && hotkeyConfig.clickLookup === "right") ||
+      (key === "Mouse:Middle" && hotkeyConfig.clickLookup === "middle")
+    ) {
       bindingError = "Already used by Scan on Click.";
       return;
     }
@@ -1316,6 +1319,7 @@
               <option value="off">Off</option>
               <option value="left">Left Click</option>
               <option value="right">Right Click</option>
+              <option value="middle">Middle Click</option>
             </select>
           </SettingRow>
         </SettingsSection>

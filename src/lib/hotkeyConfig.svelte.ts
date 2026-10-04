@@ -1,6 +1,6 @@
 import { persisted } from "./persisted.svelte";
 
-export type ClickLookup = "off" | "left" | "right";
+export type ClickLookup = "off" | "left" | "right" | "middle";
 
 export type HotkeyConfig = {
   scanModifier: string;

@@ -562,7 +562,8 @@
             else goForward();
             return;
           }
-          const lookupButton = window.popupClickLookup === "right" ? 2 : 0;
+          const lookupButton = { right: 2, middle: 1 }[window.popupClickLookup] ?? 0;
+          if (e.button === 1 && lookupButton === 1) e.preventDefault();
           if ((e.button === 0 || e.button === lookupButton) && !e.target.closest?.(".button-slot")) {
             window.hoshiSelection?.clearSelection();
           }
@@ -571,7 +572,7 @@
         true,
       );
       document.addEventListener("auxclick", (e) => {
-        if (e.button === 3 || e.button === 4) e.preventDefault();
+        if (e.button === 3 || e.button === 4 || (e.button === 1 && window.popupClickLookup === "middle")) e.preventDefault();
       });
 
       let swipeDeltaX = 0;
