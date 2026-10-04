@@ -99,7 +99,7 @@
   }
 
   $effect(() => {
-    document.documentElement.dataset.theme = chromeTheme();
+    document.documentElement.dataset.theme = chromeTheme(!!current);
     const scheme = chromeOverride();
     getCurrentWindow().setTheme(scheme);
     invoke("set_menu_theme", { dark: scheme && scheme === "dark" });

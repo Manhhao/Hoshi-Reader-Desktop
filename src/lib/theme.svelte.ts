@@ -50,8 +50,7 @@ export function infoColor(): string | null {
   return readerConfig.theme === "Custom" ? readerConfig.customInfoColor : null;
 }
 
-export function chromeTheme(): "hoshi-light" | "hoshi-dark" | "hoshi-sepia" | "hoshi-sepia-dark" {
-  if (sepiaInverted()) return "hoshi-sepia-dark";
-  if (sepiaActive()) return "hoshi-sepia";
+export function chromeTheme(reading: boolean): "hoshi-light" | "hoshi-dark" | "hoshi-sepia" {
+  if (reading && sepiaActive() && !sepiaInverted()) return "hoshi-sepia";
   return resolvedScheme() === "dark" ? "hoshi-dark" : "hoshi-light";
 }
