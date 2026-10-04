@@ -49,8 +49,10 @@ fn get_token(key: &str) -> Option<String> {
     entry(key).get_password().ok()
 }
 
-fn save_token(key: &str, value: &str) {
-    entry(key).set_password(value).ok();
+fn save_token(key: &str, value: &str) -> Result<(), String> {
+    entry(key)
+        .set_password(value)
+        .map_err(|e| format!("Failed to save {key}\n{e}"))
 }
 
 pub fn clear_tokens() {
@@ -126,11 +128,11 @@ async fn authorize() -> Result<(), String> {
     let tokens: TokenResponse = response.json().await.map_err(|e| e.to_string())?;
     manager::reset_connection(false).map_err(|error| error.to_string())?;
     clear_tokens();
-    save_token("accessToken", &tokens.access_token);
-    if let Some(refresh) = &tokens.refresh_token {
-        save_token("refreshToken", refresh);
-    }
-    Ok(())
+    save_token("accessToken", &tokens.access_token)?;
+    let refresh = tokens
+        .refresh_token
+        .ok_or("Google did not return a refresh token")?;
+    save_token("refreshToken", &refresh)
 }
 
 async fn post_token_form(
@@ -174,7 +176,7 @@ pub async fn refresh_access_token() -> Result<String, GoogleDriveError> {
             .into());
     }
     let tokens: TokenResponse = response.json().await.map_err(|e| e.to_string())?;
-    save_token("accessToken", &tokens.access_token);
+    save_token("accessToken", &tokens.access_token).ok();
     Ok(tokens.access_token)
 }
 
