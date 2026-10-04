@@ -17,7 +17,7 @@
   let paraSpacing = Number(params.get("ps"));
   const furiganaMode = params.get("fm");
   const paragraphMode = params.get("pm") === "1";
-  const sentencesPerPage = Number(params.get("spp"));
+  const maxSentencesPerPage = Number(params.get("spp"));
   const splitDialogue = params.get("sd") === "1";
   let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
   let clickAdvance = paragraphMode && params.get("ca") === "1";
@@ -771,7 +771,7 @@
   setupImages()
     .then(whenSized)
     .then(() => paragraphMode && r.awaitFonts().then(() => {
-      if (sentencesPerPage > 0) window.hoshiParagraph.splitSentences(sentencesPerPage, splitDialogue);
+      if (maxSentencesPerPage > 0) window.hoshiParagraph.splitSentences(maxSentencesPerPage, splitDialogue);
       layoutParagraphs();
     }))
     .then(() => parent.postMessage({ hoshi: "ready" }, "*"));

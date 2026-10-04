@@ -202,16 +202,16 @@
   />
   {#if readerConfig.paragraphMode}
     <SettingSlider
-      label="Sentences per Page"
+      label="Max Sentences per Page"
       {compact}
-      bind:value={readerConfig.sentencesPerPage}
-      display={readerConfig.sentencesPerPage === 0 ? "Off" : `${readerConfig.sentencesPerPage}`}
+      bind:value={readerConfig.maxSentencesPerPage}
+      display={readerConfig.maxSentencesPerPage === 0 ? "Off" : `${readerConfig.maxSentencesPerPage}`}
       min={0}
-      max={10}
+      max={5}
       step={1}
       onchange={() => save(onReload)}
     />
-    {#if readerConfig.sentencesPerPage > 0}
+    {#if readerConfig.maxSentencesPerPage > 0}
       <SettingToggle
         label="Split up Dialogue"
         {compact}
