@@ -25,6 +25,7 @@
     scale,
     actionBar,
     scanModifier,
+    scanDelay,
     clickLookup,
     disableTransparency,
     fill = false,
@@ -52,6 +53,7 @@
     scale: number;
     actionBar: boolean;
     scanModifier: string;
+    scanDelay: number;
     clickLookup: ClickLookup;
     disableTransparency: boolean;
     fill?: boolean;
@@ -95,6 +97,7 @@
       actionBar,
       showClose: !fill,
       scanModifier,
+      scanDelay,
       clickLookup,
       readerHotkeys: [...readerHotkeys],
       fonts: fonts.map((font) => ({

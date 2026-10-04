@@ -178,6 +178,7 @@
         `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.sentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
+        `&sdl=${hotkeyConfig.scanDelay}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
         `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}` +
         `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
@@ -1783,6 +1784,7 @@
       scale={readerConfig.popupScale}
       actionBar={readerConfig.popupActionBar}
       scanModifier={hotkeyConfig.scanModifier}
+      scanDelay={hotkeyConfig.scanDelay}
       clickLookup={hotkeyConfig.clickLookup}
       readerHotkeys={readerShortcutKeys}
       {onReaderHotkey}

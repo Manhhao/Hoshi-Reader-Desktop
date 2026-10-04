@@ -4,6 +4,7 @@ export type ClickLookup = "off" | "left" | "right" | "middle";
 
 export type HotkeyConfig = {
   scanModifier: string;
+  scanDelay: number;
   clickLookup: ClickLookup;
   disableReaderWheel: boolean;
   sasayakiPreviousCue: string;
@@ -17,6 +18,7 @@ export type HotkeyConfig = {
 
 const defaults: HotkeyConfig = {
   scanModifier: "Shift",
+  scanDelay: 20,
   clickLookup: "off",
   disableReaderWheel: false,
   sasayakiPreviousCue: "[",
@@ -67,6 +69,7 @@ export function normalizeHotkey(key: string): string {
 }
 
 export function hotkeyLabel(key: string): string {
+  if (key === "") return "None";
   if (key === "Control") return "Ctrl";
   if (key === " ") return "Space";
   if (key in mouseButtonLabels) return mouseButtonLabels[key];

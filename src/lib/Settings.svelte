@@ -65,6 +65,7 @@
   import About from "./About.svelte";
   import { defaultFonts } from "./readerConfig.svelte";
   import SasayakiSettings from "./SasayakiSettings.svelte";
+  import SettingSlider from "./SettingSlider.svelte";
   import SettingStepper from "./SettingStepper.svelte";
   import SettingToggle from "./SettingToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
@@ -160,10 +161,10 @@
     await refreshSyncStatus();
   }
 
-  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical"> | null>(null);
+  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay"> | null>(null);
   let bindingError = $state("");
 
-  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical">, button: HTMLButtonElement) {
+  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay">, button: HTMLButtonElement) {
     button.focus();
     bindingKey = key;
     bindingError = "";
@@ -1310,6 +1311,18 @@
               {bindingKey === "scanModifier" ? "…" : hotkeyLabel(hotkeyConfig.scanModifier)}
             </button>
           </SettingRow>
+          <p class="text-xs text-base-content/60">Unbind using Esc to scan on hover.</p>
+          {#if hotkeyConfig.scanModifier === ""}
+            <SettingSlider
+              label="Scan Delay"
+              bind:value={hotkeyConfig.scanDelay}
+              display="{hotkeyConfig.scanDelay} ms"
+              min={0}
+              max={500}
+              step={10}
+              onchange={saveHotkeyConfig}
+            />
+          {/if}
           <SettingRow label="Scan on Click">
             <select
               class="select select-sm w-36"

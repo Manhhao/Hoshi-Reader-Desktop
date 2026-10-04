@@ -329,6 +329,7 @@
         window.popupActionBar = popup.actionBar;
         window.popupShowClose = popup.showClose !== false;
         window.popupScanModifier = popup.scanModifier;
+        window.popupScanDelay = popup.scanDelay;
         window.popupClickLookup = popup.clickLookup;
         readerHotkeys = popup.readerHotkeys;
         refreshNav();
@@ -465,8 +466,10 @@
       });
 
       document.addEventListener("mousedown", (e) => {
+        clearTimeout(scanTimer);
         if (e.target.closest?.(".button-slot")) e.preventDefault();
       });
+      document.documentElement.addEventListener("mouseleave", () => clearTimeout(scanTimer));
 
       document.addEventListener("click", (e) => {
         const slot = e.target.closest?.(".button-slot");
@@ -481,8 +484,10 @@
       let lastPopupMouse = null;
       let popupMouseButtons = 0;
       let scannedSearchTextIndex = null;
+      let scanTimer = 0;
 
       function scanAt(x, y, target) {
+        if (target?.closest?.(".expression")) return;
         const span = target?.closest?.("#search-text > span");
         if (!span) {
           scannedSearchTextIndex = null;
@@ -499,7 +504,14 @@
         (e) => {
           popupMouseButtons = e.buttons;
           lastPopupMouse = { x: e.clientX, y: e.clientY, target: e.target };
-          if (e.buttons || !scanModifierHeld(e)) return;
+          clearTimeout(scanTimer);
+          if (e.buttons) return;
+          if (!scanModifierHeld(e)) {
+            if (window.popupScanModifier === "") {
+              scanTimer = setTimeout(scanAt, window.popupScanDelay, e.clientX, e.clientY, e.target);
+            }
+            return;
+          }
           scanAt(e.clientX, e.clientY, e.target);
         },
         true,

@@ -43,6 +43,7 @@
   window.scanLength = Number(params.get("sl"));
   window.scanNonJapaneseText = params.get("snj") !== "0";
   const scanModifier = params.get("mod");
+  const scanDelay = Number(params.get("sdl"));
   const clickLookup = params.get("cl");
   const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
   let scanKeyHeld = false;
@@ -378,12 +379,23 @@
 
   let lastMouse = null;
   let mouseButtons = 0;
+  let scanTimer = 0;
   document.addEventListener(
     "mousemove",
     (e) => {
       mouseButtons = e.buttons;
       lastMouse = { x: e.clientX, y: e.clientY };
-      if (e.buttons || !modifierHeld(e)) return;
+      clearTimeout(scanTimer);
+      if (e.buttons) return;
+      if (!modifierHeld(e)) {
+        if (!scanModifier) {
+          scanTimer = setTimeout(() => {
+            if (window.hoshiParagraph.animationFrame) return;
+            window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
+          }, scanDelay);
+        }
+        return;
+      }
       if (window.hoshiParagraph.finishTextAnimation()) return;
       window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
     },
@@ -420,11 +432,13 @@
   });
   document.documentElement.addEventListener("mouseleave", () => {
     lastMouse = null;
+    clearTimeout(scanTimer);
   });
   let mouseDownAt = null;
   let secondaryLookup = false;
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
+    clearTimeout(scanTimer);
     const token = mouseHotkeyTokens[e.button];
     const middle = e.button === 1 && clickLookup === "middle";
     if (token && token !== "Mouse:Right" && !middle && readerHotkeys.includes(token)) {

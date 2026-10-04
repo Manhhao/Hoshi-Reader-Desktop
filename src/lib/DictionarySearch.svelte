@@ -199,6 +199,7 @@
       scale={readerConfig.popupScale}
       actionBar={false}
       scanModifier={hotkeyConfig.scanModifier}
+      scanDelay={hotkeyConfig.scanDelay}
       clickLookup={hotkeyConfig.clickLookup}
       disableTransparency
       fill
@@ -226,6 +227,7 @@
     scale={readerConfig.popupScale}
     actionBar={readerConfig.popupActionBar}
     scanModifier={hotkeyConfig.scanModifier}
+    scanDelay={hotkeyConfig.scanDelay}
     clickLookup={hotkeyConfig.clickLookup}
     disableTransparency={readerConfig.popupDisableTransparency}
     placement={popup.placement}
