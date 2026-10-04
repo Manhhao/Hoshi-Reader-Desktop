@@ -5,7 +5,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { FolderCog } from "@lucide/svelte";
-  import { chromeOverride, resolvedScheme } from "./lib/theme.svelte";
+  import { chromeOverride, chromeTheme } from "./lib/theme.svelte";
   import Bookshelf from "./lib/Bookshelf.svelte";
   import DictionarySearch from "./lib/DictionarySearch.svelte";
   import Statistics from "./lib/Statistics.svelte";
@@ -99,7 +99,7 @@
   }
 
   $effect(() => {
-    document.documentElement.dataset.theme = resolvedScheme() === "dark" ? "hoshi-dark" : "hoshi-light";
+    document.documentElement.dataset.theme = chromeTheme(!!current);
     const scheme = chromeOverride();
     getCurrentWindow().setTheme(scheme);
     invoke("set_menu_theme", { dark: scheme && scheme === "dark" });

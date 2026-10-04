@@ -15,6 +15,7 @@
   import type { ClickLookup } from "./hotkeyConfig.svelte";
   import type { PopupPlacement } from "./popupLayout";
   import { schemeUrl } from "./scheme";
+  import { chromeTheme } from "./theme.svelte";
 
   let {
     entries,
@@ -218,6 +219,7 @@
 </script>
 
 <div
+  data-theme={chromeTheme(false)}
   class={fill
     ? "flex h-full w-full flex-col overflow-hidden"
     : `fixed flex flex-col overflow-hidden rounded-lg border border-base-content/30 shadow-md ${disableTransparency ? "bg-base-100" : "bg-base-100/45 backdrop-blur-2xl backdrop-saturate-150"}`}

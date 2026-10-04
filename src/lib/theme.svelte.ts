@@ -49,3 +49,8 @@ export function readerTextColor(): string | null {
 export function infoColor(): string | null {
   return readerConfig.theme === "Custom" ? readerConfig.customInfoColor : null;
 }
+
+export function chromeTheme(reading: boolean): "hoshi-light" | "hoshi-dark" | "hoshi-sepia" {
+  if (reading && sepiaActive() && !sepiaInverted()) return "hoshi-sepia";
+  return resolvedScheme() === "dark" ? "hoshi-dark" : "hoshi-light";
+}
