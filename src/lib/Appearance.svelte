@@ -373,12 +373,21 @@
     onchange={saveReaderConfig}
   />
   {#if readerConfig.showProgress || readerConfig.showChapterProgress}
-    <SettingToggle
-      label="Show Character Count"
-      {compact}
-      bind:checked={readerConfig.showCharacters}
-      onchange={saveReaderConfig}
-    />
+    <SettingRow label="Count" {compact}>
+      <div class="join">
+        {#each ["Off", "Characters", "Pages"] as const as count (count)}
+          <button
+            class="btn join-item btn-sm {readerConfig.progressCount === count ? 'btn-active' : ''}"
+            onclick={() => {
+              readerConfig.progressCount = count;
+              saveReaderConfig();
+            }}
+          >
+            {count}
+          </button>
+        {/each}
+      </div>
+    </SettingRow>
     <SettingToggle
       label="Show Percentage"
       {compact}

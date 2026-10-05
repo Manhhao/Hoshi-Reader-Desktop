@@ -110,6 +110,8 @@ pub fn run() {
             highlights::save_highlights,
             ime::set_japanese_ime,
             library::load_bookmark,
+            library::load_pages,
+            library::save_pages,
             library::mark_book_read,
             library::save_bookmark,
             library::delete_local_book,

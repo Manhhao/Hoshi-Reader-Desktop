@@ -166,24 +166,31 @@
   let contentEl: HTMLDivElement;
   let pendingFragment: string | null = null;
 
+  function layoutQuery() {
+    const mode = vertical ? "vertical" : "horizontal";
+    return (
+      `mode=${mode}&fs=${readerConfig.fontSize}&hp=${readerConfig.horizontalPadding}&vp=${readerConfig.verticalPadding}&mw=${readerConfig.maxWidth}&mh=${readerConfig.maxHeight}` +
+      `&j=${readerConfig.justifyText ? 1 : 0}&apb=${readerConfig.avoidPageBreak ? 1 : 0}` +
+      `&adv=${readerConfig.layoutAdvanced ? 1 : 0}&lh=${readerConfig.lineHeight}` +
+      `&cs=${readerConfig.characterSpacing}&ps=${readerConfig.paragraphSpacing}` +
+      `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
+      `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.maxSentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}` +
+      `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
+      `&ffile=${encodeURIComponent(readerConfig.selectedFontFile)}`
+    );
+  }
+
   function frameSrc() {
     const href = encodeURI(spine[index]);
-    const mode = vertical ? "vertical" : "horizontal";
     return schemeUrl(
       "book",
-      `${id}/${href}?mode=${mode}&fs=${readerConfig.fontSize}&hp=${readerConfig.horizontalPadding}&vp=${readerConfig.verticalPadding}&mw=${readerConfig.maxWidth}&mh=${readerConfig.maxHeight}` +
-        `&j=${readerConfig.justifyText ? 1 : 0}&apb=${readerConfig.avoidPageBreak ? 1 : 0}` +
-        `&adv=${readerConfig.layoutAdvanced ? 1 : 0}&lh=${readerConfig.lineHeight}` +
-        `&cs=${readerConfig.characterSpacing}&ps=${readerConfig.paragraphSpacing}` +
-        `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
-        `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.maxSentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
+      `${id}/${href}?${layoutQuery()}` +
+        `&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
         `&sdl=${hotkeyConfig.scanDelay}&cz=${hotkeyConfig.pageClickZone}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
-        `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}` +
-        `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
-        `&ffile=${encodeURIComponent(readerConfig.selectedFontFile)}`,
+        `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}`,
     );
   }
 
@@ -286,6 +293,7 @@
   }
 
   function pushFrame() {
+    currentPage = null;
     sasayaki?.prepareTransition();
     loading = true;
     frames = [...frames, { key: ++frameSeq, src: frameSrc() }];
@@ -295,6 +303,85 @@
   let frozen = $state<{ w: number; h: number } | null>(null);
   let resizing = $state(false);
   let settleTimer = 0;
+
+  let frameWidth = $state(0);
+  let frameHeight = $state(0);
+  let pagesFrame = $state<HTMLIFrameElement>();
+  let pagesSrc = $state<string | null>(null);
+  let pagesRun = 0;
+  let measuredStarts: number[][] = [];
+  let pageStarts = $state.raw<number[]>([]);
+  let spineFirstPages = $state.raw<number[]>([]);
+  let currentPage = $state<number | null>(null);
+
+  const showPages = $derived(readerConfig.progressCount === "Pages");
+  const layout = $derived(`${layoutQuery()}&w=${frameWidth}&h=${frameHeight}`);
+
+  function updatePages(starts: number[][]) {
+    const all: number[] = [];
+    const firstPages: number[] = [];
+    starts.forEach((spineStarts, spineIndex) => {
+      firstPages.push(all.length);
+      const spineStart = bookInfo.chapterInfo[spine[spineIndex]]?.currentTotal ?? 0;
+      for (const start of spineStarts) all.push(spineStart + start);
+    });
+    spineFirstPages = firstPages;
+    pageStarts = all;
+  }
+
+  function measureSpine() {
+    pagesSrc = schemeUrl(
+      "book",
+      `${id}/${encodeURI(spine[measuredStarts.length])}?${layoutQuery()}&pages=${++pagesRun}`,
+    );
+  }
+
+  function onSpineMeasured(starts: number[]) {
+    measuredStarts.push(starts);
+    if (measuredStarts.length < spine.length) {
+      measureSpine();
+      return;
+    }
+    invoke("save_pages", { id, pages: { layout, pageStarts: measuredStarts } });
+    updatePages(measuredStarts);
+    pagesSrc = null;
+  }
+
+  $effect(() => {
+    if (!showPages || resizing || !frameWidth || !frameHeight) return;
+    const key = layout;
+    let cancelled = false;
+    invoke<{ layout: unknown; pageStarts: number[][] } | null>("load_pages", { id }).then((cache) => {
+      if (cancelled) return;
+      if (cache?.layout === key) {
+        updatePages(cache.pageStarts);
+      } else {
+        measuredStarts = [];
+        measureSpine();
+      }
+    });
+    return () => {
+      cancelled = true;
+      pagesRun++;
+      pagesSrc = null;
+      updatePages([]);
+    };
+  });
+
+  function pageAt(character: number, spineIndex: number) {
+    const firstPage = spineFirstPages[spineIndex];
+    const endPage = spineFirstPages[spineIndex + 1] ?? pageStarts.length;
+    for (let page = endPage - 1; page > firstPage; page--) {
+      if (pageStarts[page] <= character) return page;
+    }
+    return firstPage;
+  }
+
+  function positionLabel(character: number, spineIndex?: number) {
+    spineIndex ??= resolveCharacterPosition(character)?.spineIndex;
+    if (!showPages || !pageStarts.length || spineIndex === undefined) return String(character);
+    return String(pageAt(character, spineIndex) + 1);
+  }
 
   type PopupInstance = {
     id: string;
@@ -529,9 +616,28 @@
   }
   const currentChar = $derived(calculateCharacterProgress(index, progress));
 
-  function progressLine(current: number, total: number): string {
+  const pageProgress = $derived.by(() => {
+    if (!pageStarts.length) return null;
+    const page =
+      currentPage !== null
+        ? spineFirstPages[index] + currentPage
+        : progress === 0
+          ? spineFirstPages[index]
+          : pageAt(currentChar, index);
+    const chapterEnd = chapterRange.start + chapterRange.total;
+    let chapterFirstPage = pageStarts.indexOf(chapterRange.start);
+    if (chapterFirstPage < 0) chapterFirstPage = Math.max(pageStarts.findLastIndex((start) => start < chapterRange.start), 0);
+    let chapterLastPage = chapterEnd === bookInfo.characterCount ? pageStarts.length - 1 : pageStarts.findLastIndex((start) => start < chapterEnd);
+    if (chapterLastPage < 0) chapterLastPage = chapterFirstPage;
+    const chapterTotal = chapterLastPage - chapterFirstPage + 1;
+    const chapterPage = Math.min(Math.max(page - chapterFirstPage + 1, 1), chapterTotal);
+    return { page: page + 1, total: pageStarts.length, chapterPage, chapterTotal };
+  });
+
+  function progressLine(current: number, total: number, pages: [number, number] | null): string {
     const parts: string[] = [];
-    if (readerConfig.showCharacters) parts.push(`${current} / ${total}`);
+    if (showPages) parts.push(pages ? `${pages[0]} of ${pages[1]}` : "…");
+    else if (readerConfig.progressCount !== "Off") parts.push(`${current} / ${total}`);
     if (readerConfig.showPercentage) {
       const percent = total > 0 ? ((current / total) * 100).toFixed(2) : "0";
       parts.push(`${percent}%`);
@@ -541,11 +647,11 @@
   const progressText = $derived.by(() => {
     const lines: string[] = [];
     if (readerConfig.showProgress) {
-      const line = progressLine(currentChar, bookInfo.characterCount);
+      const line = progressLine(currentChar, bookInfo.characterCount, pageProgress && [pageProgress.page, pageProgress.total]);
       if (line) lines.push(line);
     }
     if (readerConfig.showChapterProgress) {
-      const line = progressLine(chapterRange.character, chapterRange.total);
+      const line = progressLine(chapterRange.character, chapterRange.total, pageProgress && [pageProgress.chapterPage, pageProgress.chapterTotal]);
       if (line) lines.push(`(${line})`);
     }
     return lines.join(" ");
@@ -770,7 +876,7 @@
     if (next < 0) next = chapterStarts.length;
     const start = chapterStarts[next - 1];
     const end = next < chapterStarts.length ? chapterStarts[next] : bookInfo.characterCount;
-    return { character: position - start, total: end - start };
+    return { start, character: position - start, total: end - start };
   });
   const timeToFinishBook = $derived(
     readingSpeed(stats.allTimeTotal) > 0
@@ -1027,6 +1133,10 @@
   }
 
   function onMessage(e: MessageEvent) {
+    if (pagesFrame && e.source === pagesFrame.contentWindow) {
+      if (e.data?.hoshi === "pages" && e.data.run === String(pagesRun)) onSpineMeasured(e.data.starts);
+      return;
+    }
     let sourceKey: number | null = null;
     for (const [key, el] of frameEls) {
       if (el.contentWindow === e.source) {
@@ -1142,6 +1252,9 @@
       }
       case "marker":
         marker = { x: m.x, y: m.y, inset: m.inset };
+        break;
+      case "page":
+        currentPage = m.page;
         break;
       case "progress":
         if (applyingBookmark || bookDeleted) break;
@@ -1448,7 +1561,18 @@
     class="relative min-h-0 flex-1 overflow-hidden"
     style="background-color: {readerBg}"
   >
-    <div class="absolute" style="inset: {chromeInset}px {chromeInsetX}px">
+    <div class="absolute" style="inset: {chromeInset}px {chromeInsetX}px" bind:clientWidth={frameWidth} bind:clientHeight={frameHeight}>
+      {#key pagesSrc}
+        {#if pagesSrc}
+          <iframe
+            bind:this={pagesFrame}
+            src={pagesSrc}
+            title=""
+            style={iframeStyle}
+            class="pointer-events-none invisible absolute inset-x-0 top-0 border-0"
+          ></iframe>
+        {/if}
+      {/key}
       {#each frames as frame, i (frame.key)}
         <iframe
           use:frameRef={frame.key}
@@ -1844,7 +1968,7 @@
 
       {#if side === "left"}
         <div class="min-h-0 flex-1 flex-col {panel === 'Search' ? 'flex' : 'hidden'}">
-          <BookSearch {id} onJump={jumpToSearchResult} bind:this={bookSearch} />
+          <BookSearch {id} {positionLabel} onJump={jumpToSearchResult} bind:this={bookSearch} />
         </div>
       {/if}
 
@@ -1928,7 +2052,7 @@
                 </span>
                 {#if chapterChars(item) !== null}
                   <span class="shrink-0 text-xs tabular-nums text-base-content/50">
-                    {chapterChars(item)}
+                    {positionLabel(chapterChars(item)!, item.spineIndex)}
                   </span>
                 {/if}
               </button>
@@ -1936,7 +2060,7 @@
           {/each}
         </ul>
       {:else if panel === "Highlights"}
-        <HighlightList {highlights} {bookInfo} {toc} onDelete={removeHighlight} onJump={(highlight) => {
+        <HighlightList {highlights} {bookInfo} {toc} {positionLabel} onDelete={removeHighlight} onJump={(highlight) => {
           closePopups();
           jumpToCharacter(highlight.character);
         }} />

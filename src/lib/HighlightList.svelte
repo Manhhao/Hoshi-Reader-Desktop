@@ -4,10 +4,11 @@
   import { relativeDate } from "./relativeDate";
   import type { BookInfo, TocItem } from "./types";
 
-  let { highlights, bookInfo, toc, onJump, onDelete }: {
+  let { highlights, bookInfo, toc, positionLabel, onJump, onDelete }: {
     highlights: BookHighlight[];
     bookInfo: BookInfo;
     toc: TocItem[];
+    positionLabel: (character: number) => string;
     onJump: (highlight: BookHighlight) => void;
     onDelete: (highlight: BookHighlight) => void;
   } = $props();
@@ -57,7 +58,7 @@
             <button class="flex w-full flex-col gap-2 text-left" onclick={() => onJump(highlight)}>
               <span class="pr-7 text-sm"><span style:background-color={`rgba(${highlightColors[highlight.color].join(",")}, 0.35)`}>{(highlight.textFurigana ?? highlight.text).trim()}</span></span>
               <span class="flex w-full justify-between gap-2 text-xs text-base-content/60">
-                <span>{dateLabel(highlight.createdAt)}</span><span>{highlight.character}</span>
+                <span>{dateLabel(highlight.createdAt)}</span><span>{positionLabel(highlight.character)}</span>
               </span>
             </button>
             <button class="btn btn-ghost btn-xs btn-square absolute top-3 right-4 text-base-content/50 hover:text-error" title="Delete" onclick={() => onDelete(highlight)}><Trash2 class="size-3.5" /></button>

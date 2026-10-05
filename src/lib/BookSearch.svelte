@@ -3,8 +3,9 @@
   import { Search } from "@lucide/svelte";
   import type { BookSearchResult } from "./types";
 
-  let { id, onJump }: {
+  let { id, positionLabel, onJump }: {
     id: string;
+    positionLabel: (character: number) => string;
     onJump: (result: BookSearchResult) => void;
   } = $props();
 
@@ -54,7 +55,7 @@
             <button class="flex w-full flex-col gap-2 px-4 py-3 text-left hover:bg-base-200" onclick={() => onJump(result)}>
               <span class="text-sm">{result.prefix}<strong>{result.matched}</strong>{result.suffix}</span>
               <span class="flex w-full justify-between gap-2 text-xs text-base-content/60">
-                <span class="truncate">{result.chapter}</span><span>{result.character}</span>
+                <span class="truncate">{result.chapter}</span><span>{positionLabel(result.character)}</span>
               </span>
             </button>
           </li>

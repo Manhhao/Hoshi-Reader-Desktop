@@ -19,6 +19,7 @@
   const paragraphMode = params.get("pm") === "1";
   const maxSentencesPerPage = Number(params.get("spp"));
   const splitDialogue = params.get("sd") === "1";
+  const pagesRun = params.get("pages");
   let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
   let clickAdvance = paragraphMode && params.get("ca") === "1";
   const blurImages = params.get("bi") === "1";
@@ -380,6 +381,7 @@
         },
       },
       textSelected: { postMessage: (d) => parent.postMessage({ hoshi: "selected", ...d }, "*") },
+      pageChanged: { postMessage: (page) => parent.postMessage({ hoshi: "page", page }, "*") },
     },
   };
 
@@ -781,5 +783,14 @@
       if (maxSentencesPerPage > 0) window.hoshiParagraph.splitSentences(maxSentencesPerPage, splitDialogue);
       layoutParagraphs();
     }))
-    .then(() => parent.postMessage({ hoshi: "ready" }, "*"));
+    .then(() => {
+      if (!pagesRun) {
+        parent.postMessage({ hoshi: "ready" }, "*");
+        return;
+      }
+      r.awaitFonts().then(() => {
+        r.buildNodeOffsets();
+        parent.postMessage({ hoshi: "pages", run: pagesRun, starts: r.calculatePageStarts() }, "*");
+      });
+    });
 })();

@@ -20,6 +20,7 @@ const BOOKS_DIR: &str = "Books";
 const STATISTICS_COVER: &str = "cover.jpg";
 pub const BOOKINFO_FILE: &str = "bookinfo.json";
 pub const BOOKMARK_FILE: &str = "bookmark.json";
+pub const PAGES_FILE: &str = "pages.json";
 const METADATA_FILE: &str = "metadata.json";
 const SHELVES_FILE: &str = "shelves.json";
 
@@ -219,6 +220,18 @@ pub fn load_book_info(app: AppHandle, id: String) -> BookInfo {
 #[tauri::command(async)]
 pub fn load_bookmark(app: AppHandle, id: String) -> Option<Bookmark> {
     read_book_json(&app, &id, BOOKMARK_FILE)
+}
+
+#[tauri::command(async)]
+pub fn load_pages(app: AppHandle, id: String) -> Option<serde_json::Value> {
+    read_book_json(&app, &id, PAGES_FILE)
+}
+
+#[tauri::command(async)]
+pub fn save_pages(app: AppHandle, id: String, pages: serde_json::Value) {
+    if let Some(dir) = book_dir(&app, &id) {
+        write_json(&dir.join(PAGES_FILE), &pages).ok();
+    }
 }
 
 #[tauri::command]

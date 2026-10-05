@@ -597,6 +597,7 @@ impl SyncStorage {
             library::delete(&root.join(SASAYAKI_TRANSCRIPT))?;
             library::delete(&root.join(library::BOOKMARK_FILE))?;
             library::delete(&root.join(HIGHLIGHTS))?;
+            library::delete(&root.join(library::PAGES_FILE))?;
 
             if let Some(mut playback) = sasayaki::load_sasayaki_playback(&root) {
                 playback.last_position = 0.0;

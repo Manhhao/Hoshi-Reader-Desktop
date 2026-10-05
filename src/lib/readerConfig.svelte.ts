@@ -3,6 +3,7 @@ import { isMac } from "./platform";
 
 export type FuriganaMode = "Off" | "Dimmed" | "Toggle" | "Hidden";
 export type ThemeName = "System" | "Light" | "Dark" | "Sepia" | "Custom";
+export type ProgressCount = "Off" | "Characters" | "Pages";
 
 export const defaultFonts = isMac
   ? ["Hiragino Mincho ProN", "Hiragino Kaku Gothic ProN"]
@@ -41,7 +42,7 @@ export type ReaderConfig = {
   paragraphSpacing: number;
   showProgress: boolean;
   showChapterProgress: boolean;
-  showCharacters: boolean;
+  progressCount: ProgressCount;
   showPercentage: boolean;
   showStatisticsToggle: boolean;
   showReadingSpeed: boolean;
@@ -86,7 +87,7 @@ const defaults: ReaderConfig = {
   paragraphSpacing: 0,
   showProgress: true,
   showChapterProgress: false,
-  showCharacters: true,
+  progressCount: "Characters",
   showPercentage: true,
   showStatisticsToggle: false,
   showReadingSpeed: false,
@@ -102,3 +103,10 @@ const store = persisted<ReaderConfig>("reader.config", defaults);
 
 export const readerConfig = store.config;
 export const saveReaderConfig = store.save;
+
+const legacy = readerConfig as ReaderConfig & { showCharacters?: boolean };
+if (legacy.showCharacters !== undefined) {
+  if (!legacy.showCharacters) readerConfig.progressCount = "Off";
+  delete legacy.showCharacters;
+  saveReaderConfig();
+}
