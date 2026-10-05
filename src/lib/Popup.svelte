@@ -30,6 +30,7 @@
     clickLookup,
     disableTransparency,
     fill = false,
+    hasChild,
     placement,
     zIndex,
     searchText = "",
@@ -42,6 +43,7 @@
     onSelected,
     onPress,
     onClose,
+    onHover,
     onMine,
     onDuplicateCheck,
     onShowNotes,
@@ -58,6 +60,7 @@
     clickLookup: ClickLookup;
     disableTransparency: boolean;
     fill?: boolean;
+    hasChild: boolean;
     placement?: PopupPlacement;
     zIndex?: number;
     searchText?: string;
@@ -74,6 +77,7 @@
     onKanjiRedirect: (character: string) => Promise<KanjiResponse | null>;
     onPress: () => void;
     onClose: () => void;
+    onHover: (over: boolean) => void;
     onSelected: (
       text: string,
       sentence: string | null,
@@ -213,6 +217,10 @@
   });
 
   $effect(() => {
+    if (!hasChild) send({ hoshi: "clear-selection" });
+  });
+
+  $effect(() => {
     if (!channelReady || !fill) return;
     send({ hoshi: "search-text", text: searchText, size: searchTextSize });
   });
@@ -220,6 +228,9 @@
 
 <div
   data-theme={chromeTheme(false)}
+  role="presentation"
+  onmouseenter={() => onHover(true)}
+  onmouseleave={() => onHover(false)}
   class={fill
     ? "flex h-full w-full flex-col overflow-hidden"
     : `fixed flex flex-col overflow-hidden rounded-lg border border-base-content/30 shadow-md ${disableTransparency ? "bg-base-100" : "bg-base-100/45 backdrop-blur-2xl backdrop-saturate-150"}`}

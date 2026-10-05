@@ -7,6 +7,7 @@
   import { hotkeyConfig } from "./hotkeyConfig.svelte";
   import { readerConfig } from "./readerConfig.svelte";
   import { calculatePopupLayout, type PopupPlacement } from "./popupLayout";
+  import { cursorExitHider } from "./popupHover";
   import type {
     FontInfo,
     KanjiResponse,
@@ -36,6 +37,7 @@
   let clozeOffset = $state<number | null>(null);
   let paneEl = $state<HTMLDivElement | null>(null);
   let lookupSeq = 0;
+  const hider = cursorExitHider(closePopups);
 
   function lookup(text: string): Promise<LookupResponse> {
     return invoke<LookupResponse>("lookup", {
@@ -111,6 +113,7 @@
     offset: number | null,
     rect: SelectionRect | null,
   ): Promise<number | null> {
+    hider.cancel();
     const seq = ++lookupSeq;
     const response = await lookup(text);
     if (seq !== lookupSeq || !response.entries.length) return null;
@@ -203,6 +206,7 @@
       clickLookup={hotkeyConfig.clickLookup}
       disableTransparency
       fill
+      hasChild={popups.length > 0}
       {searchText}
       searchTextSize={dictConfig.searchTextSize}
       onRedirect={paneRedirect}
@@ -210,6 +214,7 @@
       onSelected={(text, sentence, offset, rect) => openPopup(-1, text, sentence, offset, rect)}
       onPress={() => closePopups()}
       onClose={clearResults}
+      onHover={() => hider.hover(-1)}
       onMine={(content) => mineEntry(content, searchText, clozeOffset)}
       onDuplicateCheck={checkDuplicates}
       onShowNotes={showNotes}
@@ -230,6 +235,7 @@
     scanDelay={hotkeyConfig.scanDelay}
     clickLookup={hotkeyConfig.clickLookup}
     disableTransparency={readerConfig.popupDisableTransparency}
+    hasChild={i < popups.length - 1}
     placement={popup.placement}
     zIndex={30 + i}
     onRedirect={lookup}
@@ -237,6 +243,7 @@
     onSelected={(text, sentence, offset, rect) => openPopup(i, text, sentence, offset, rect)}
     onPress={() => closePopups(i + 1)}
     onClose={() => closePopups(i)}
+    onHover={(over) => hider.hover(over ? i : -1)}
     onMine={(content) => mineEntry(content, popup.sentence, popup.clozeOffset)}
     onDuplicateCheck={checkDuplicates}
     onShowNotes={showNotes}

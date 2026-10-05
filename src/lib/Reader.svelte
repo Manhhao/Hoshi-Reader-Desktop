@@ -58,6 +58,7 @@
   import { StatsTracker } from "./statsTracker.svelte";
   import { readingSpeed } from "./statsModel.svelte";
   import { calculatePopupLayout, type PopupPlacement } from "./popupLayout";
+  import { cursorExitHider } from "./popupHover";
   import type {
     BookInfo,
     BookMetadata,
@@ -311,6 +312,7 @@
   let lookupSeq = 0;
   let popups = $state<PopupInstance[]>([]);
   let popupAnki = $state<PopupAnkiConfig | null>(null);
+  const hider = cursorExitHider(closePopups);
 
   function postToFrame(message: unknown) {
     activeEl()?.contentWindow?.postMessage(message, "*");
@@ -386,6 +388,7 @@
     sentence: string = "",
     offset: number | null = null,
   ) {
+    hider.cancel();
     const seq = ++lookupSeq;
     const response = await lookup(text);
     if (seq !== lookupSeq || !response.entries.length) return;
@@ -443,6 +446,7 @@
     offset: number | null,
     rect: SelectionRect | null,
   ): Promise<number | null> {
+    hider.cancel();
     const seq = ++lookupSeq;
     const response = await lookup(text);
     if (seq !== lookupSeq || !response.entries.length) return null;
@@ -1791,6 +1795,7 @@
       readerHotkeys={readerShortcutKeys}
       {onReaderHotkey}
       disableTransparency={readerConfig.popupDisableTransparency}
+      hasChild={i < popups.length - 1}
       placement={popup.placement}
       zIndex={30 + i}
       sasayaki={popup.sasayakiCue && sasayaki?.hasAudio
@@ -1810,6 +1815,7 @@
       onSelected={(text, sentence, offset, rect) => popupLookup(i, text, sentence, offset, rect)}
       onPress={() => closePopups(i + 1)}
       onClose={() => closePopups(i)}
+      onHover={(over) => hider.hover(over ? i : -1)}
       onMine={(content) => mineEntry(content, popup)}
       onDuplicateCheck={checkDuplicates}
       onShowNotes={showNotes}

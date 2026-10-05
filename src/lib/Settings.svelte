@@ -161,10 +161,10 @@
     await refreshSyncStatus();
   }
 
-  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone"> | null>(null);
+  let bindingKey = $state<Exclude<keyof HotkeyConfig, "clickLookup" | "hidePopupOnCursorExit" | "hidePopupOnCursorExitDelay" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone"> | null>(null);
   let bindingError = $state("");
 
-  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone">, button: HTMLButtonElement) {
+  function startBinding(key: Exclude<keyof HotkeyConfig, "clickLookup" | "hidePopupOnCursorExit" | "hidePopupOnCursorExitDelay" | "disableReaderWheel" | "reversePageVertical" | "scanDelay" | "pageClickZone">, button: HTMLButtonElement) {
     button.focus();
     bindingKey = key;
     bindingError = "";
@@ -1335,6 +1335,22 @@
               <option value="middle">Middle Click</option>
             </select>
           </SettingRow>
+          <SettingToggle
+            label="Hide Popup on Cursor Exit"
+            bind:checked={hotkeyConfig.hidePopupOnCursorExit}
+            onchange={saveHotkeyConfig}
+          />
+          {#if hotkeyConfig.hidePopupOnCursorExit}
+            <SettingSlider
+              label="Hide Delay"
+              bind:value={hotkeyConfig.hidePopupOnCursorExitDelay}
+              display="{hotkeyConfig.hidePopupOnCursorExitDelay} ms"
+              min={0}
+              max={1000}
+              step={50}
+              onchange={saveHotkeyConfig}
+            />
+          {/if}
         </SettingsSection>
         {#each ["Sasayaki", "Reader"] as section}
           <SettingsSection title={section}>

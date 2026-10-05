@@ -6,6 +6,8 @@ export type HotkeyConfig = {
   scanModifier: string;
   scanDelay: number;
   clickLookup: ClickLookup;
+  hidePopupOnCursorExit: boolean;
+  hidePopupOnCursorExitDelay: number;
   disableReaderWheel: boolean;
   sasayakiPreviousCue: string;
   sasayakiNextCue: string;
@@ -21,6 +23,8 @@ const defaults: HotkeyConfig = {
   scanModifier: "Shift",
   scanDelay: 20,
   clickLookup: "off",
+  hidePopupOnCursorExit: false,
+  hidePopupOnCursorExitDelay: 0,
   disableReaderWheel: false,
   sasayakiPreviousCue: "[",
   sasayakiNextCue: "]",
