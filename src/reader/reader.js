@@ -159,10 +159,10 @@ window.hoshiReader = {
     },
     
     calculatePageStarts() {
-        const { vertical, pageSize, maxScroll } = this.getScrollContext();
-        const size = pageSize / this.pagesPerScreen;
+        const { vertical, pageSize: screenSize, maxScroll } = this.getScrollContext();
+        const pageSize = screenSize / this.pagesPerScreen;
         const pageCount = this.pagesPerScreen > 1
-            ? Math.max(1, Math.floor(this.contentSize(vertical) / size))
+            ? Math.max(1, Math.floor(this.contentSize(vertical) / pageSize))
             : Math.round(maxScroll / pageSize) + 1;
         const starts = new Array(pageCount).fill(null);
         const walker = this.createWalker();
@@ -182,8 +182,8 @@ window.hoshiReader = {
                 if (!rect.width || !rect.height) {
                     continue;
                 }
-                const position = vertical ? pageSize - rect.right : rect.left;
-                const page = Math.min(pageCount - 1, Math.max(0, Math.floor(position / size)));
+                const position = vertical ? screenSize - rect.right : rect.left;
+                const page = Math.min(pageCount - 1, Math.max(0, Math.floor(position / pageSize)));
                 if (starts[page] === null) {
                     let low = 0;
                     let high = node.textContent.length;
@@ -192,8 +192,8 @@ window.hoshiReader = {
                         range.setStart(node, mid);
                         range.setEnd(node, mid + 1);
                         const charRect = this.getRect(range);
-                        const charPosition = vertical ? pageSize - charRect.right : charRect.left;
-                        if (charPosition >= page * size) {
+                        const charPosition = vertical ? screenSize - charRect.right : charRect.left;
+                        if (charPosition >= page * pageSize) {
                             high = mid;
                         } else {
                             low = mid + 1;

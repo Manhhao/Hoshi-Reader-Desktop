@@ -179,15 +179,10 @@
   }
 
   function spreadInset(spread: boolean) {
-    return spread
-      ? Math.round(
-          Math.max(
-            (frameWidth * readerConfig.horizontalPadding) / 200,
-            readerConfig.maxWidth ? (frameWidth - spreadGap) / 2 - readerConfig.maxWidth : 0,
-          ),
-        ) -
-          spreadGap / 2
-      : 0;
+    if (!spread) return 0;
+    const padding = (frameWidth * readerConfig.horizontalPadding) / 200;
+    const maxWidthInset = readerConfig.maxWidth ? (frameWidth - spreadGap) / 2 - readerConfig.maxWidth : 0;
+    return Math.round(Math.max(padding, maxWidthInset)) - spreadGap / 2;
   }
 
   function frameStyle(inset: number) {
@@ -346,6 +341,7 @@
 
   const showPages = $derived(readerConfig.progressCount === "Pages");
   const topProgress = $derived(spreadMode && readerConfig.spreadTopProgress);
+  const measuresPages = $derived(showPages || (topProgress && readerConfig.progressCount === "Characters"));
   const layout = $derived(`${layoutQuery(spreadMode)}&w=${frameWidth}&h=${frameHeight}`);
 
   function updatePages(starts: number[][]) {
@@ -380,7 +376,7 @@
   }
 
   $effect(() => {
-    if (!(showPages || (topProgress && readerConfig.progressCount === "Characters")) || resizing || !frameWidth || !frameHeight) return;
+    if (!measuresPages || resizing || !frameWidth || !frameHeight) return;
     const key = layout;
     let cancelled = false;
     invoke<{ layout: unknown; pageStarts: number[][] } | null>("load_pages", { id }).then((cache) => {
@@ -631,10 +627,18 @@
   }
 
   const chromeInset = 28;
+  const windowButtonsRight = 78;
+  const windowButtonsBottom = 28;
   const chromeInsetX = 25;
   const speedPresets = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
   const macChrome = $derived(isMac && !fullscreen);
+
+  function markerTop(inset: number) {
+    return topProgress
+      ? Math.min(chromeInset + frameHeight - inset + 2, 2 * chromeInset + frameHeight - 18)
+      : Math.max(2, chromeInset + inset - 18);
+  }
 
   const iframeStyle = $derived(
     frozen
@@ -1670,7 +1674,7 @@
         class="pointer-events-none absolute text-base-content/50 transition-opacity duration-200"
         class:opacity-0={resizing}
         style="{vertical
-          ? `top: ${topProgress ? Math.min(chromeInset + frameHeight - marker.inset + 2, 2 * chromeInset + frameHeight - 18) : Math.max(2, chromeInset + marker.inset - 18)}px; left: ${chromeInsetX + frameInset + marker.x}px`
+          ? `top: ${markerTop(marker.inset)}px; left: ${chromeInsetX + frameInset + marker.x}px`
           : `top: ${chromeInset + marker.y - 8}px; left: ${Math.max(
               0,
               chromeInsetX + frameInset + marker.x - 20,
@@ -1686,11 +1690,12 @@
       {@const edge = chromeInsetX + (spread ? frameInset + spreadGap / 2 : (frameWidth * effectivePadding(readerConfig.horizontalPadding, readerConfig.maxWidth, frameWidth)) / 200)}
       {@const top = Math.round((frameHeight * effectivePadding(readerConfig.verticalPadding, readerConfig.maxHeight, frameHeight)) / 200)}
       {@const size = Math.max(11, Math.round(readerConfig.fontSize * 0.6))}
-      {@const color = `; font: ${size}px "${readerConfig.selectedFont}", "Hiragino Mincho ProN", "Yu Mincho", serif${readerInfo ? `; color: ${readerInfo}` : ""}`}
+      {@const underButtons = macChrome && top + chromeInset / 2 - size / 2 < windowButtonsBottom}
+      {@const textStyle = `font: ${size}px "${readerConfig.selectedFont}", "Hiragino Mincho ProN", "Yu Mincho", serif${readerInfo ? `; color: ${readerInfo}` : ""}`}
       <span
         class="pointer-events-none absolute z-20 flex h-7 max-w-[40%] items-center gap-[1em] text-base-content/60 transition-opacity duration-200"
         class:opacity-0={resizing}
-        style="top: {top}px; left: {Math.max(edge, macChrome && top + 14 - size / 2 < 28 ? 78 : 0)}px{color}"
+        style="top: {top}px; left: {underButtons ? Math.max(edge, windowButtonsRight) : edge}px; {textStyle}"
       >
         {#if spreadCorners.left}
           <span class="tabular-nums">{spreadCorners.left}</span>
@@ -1700,7 +1705,7 @@
       <span
         class="pointer-events-none absolute z-20 flex h-7 items-center tabular-nums text-base-content/60 transition-opacity duration-200"
         class:opacity-0={resizing}
-        style="top: {top}px; right: {edge}px{color}"
+        style="top: {top}px; right: {edge}px; {textStyle}"
       >
         {spreadCorners.right}
       </span>
