@@ -443,6 +443,7 @@
   let mouseDownAt = null;
   let secondaryLookup = false;
   let selectionDismissed = false;
+  let pressedSelection = null;
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
     clearTimeout(scanTimer);
@@ -464,6 +465,7 @@
     mouseDownAt = { x: e.clientX, y: e.clientY };
     selectionDismissed = !window.getSelection().isCollapsed || !!window.hoshiSelection.selection;
     if ((clickAdvance || clickEdge(e.clientX)) && e.detail > 1) e.preventDefault();
+    pressedSelection = window.hoshiSelection.selection;
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
   });
@@ -501,6 +503,11 @@
     const lookup = button !== 0 || clickLookup === "left";
     if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
       parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
+      return;
+    }
+    const hit = pressedSelection && window.hoshiSelection.getCharacterAtPoint(e.clientX, e.clientY);
+    if (hit && hit.node === pressedSelection.startNode && hit.offset === pressedSelection.startOffset) {
+      parent.postMessage({ hoshi: "lookup-miss", dismissed: true }, "*");
       return;
     }
     const selected = window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
