@@ -15,6 +15,7 @@
   let lineHeight = Number(params.get("lh"));
   let charSpacing = Number(params.get("cs"));
   let paraSpacing = Number(params.get("ps"));
+  let spreadGap = Number(params.get("sp"));
   const furiganaMode = params.get("fm");
   const paragraphMode = params.get("pm") === "1";
   const maxSentencesPerPage = Number(params.get("spp"));
@@ -75,7 +76,7 @@
 
   const style = document.createElement("style");
   document.head.appendChild(style);
-  let spacer = null;
+  let spacers = [];
 
   function effectivePadding(padding, max, size) {
     if (!max || !size) return padding;
@@ -86,13 +87,18 @@
     const paddingX = effectivePadding(horizontalPadding, maxWidth, window.innerWidth);
     const paddingY = effectivePadding(verticalPadding, maxHeight, window.innerHeight);
     const overlap = vertical && !chromium ? fontSize : 0;
-    const imgWidth = `calc(${100 - paddingX}vw - 1px)`;
+    const spread = spreadGap > 0;
+    const pages = spread ? 2 : 1;
+    const gap = spread ? `${spreadGap}px` : `${paddingX}vw`;
+    const side = spread ? `${spreadGap / 2}px` : `${paddingX / 2}vw`;
+    const pageWidth = spread ? `calc(50vw - ${spreadGap}px)` : `${100 - paddingX}vw`;
+    const imgWidth = `calc(${pageWidth} - 1px)`;
     const imgHeight = vertical
       ? `calc(${100 - paddingY}vh - ${(overlap * (100 - paddingY)) / 100}px)`
       : `${100 - paddingY}vh`;
     const columns = vertical && chromium
-      ? `column-width: 100vh !important; column-height: ${100 - paddingX}vw !important; column-wrap: wrap !important; row-gap: ${paddingX}vw !important; column-gap: 0 !important;`
-      : `-webkit-column-axis: horizontal !important; column-width: 100vw !important; column-gap: ${paddingX}vw !important;`;
+      ? `column-width: 100vh !important; column-height: ${pageWidth} !important; column-wrap: wrap !important; row-gap: ${gap} !important; column-gap: 0 !important;`
+      : `-webkit-column-axis: horizontal !important; column-width: ${spread ? imgWidth : "100vw"} !important; column-gap: ${gap} !important;`;
     style.textContent = `
       :root { color-scheme: light dark; }
       :root { ${vertical ? `--hoshi-content-width: ${100 - paddingX}vw` : `--hoshi-content-height: ${100 - paddingY}vh`}; }
@@ -123,7 +129,8 @@
         font-family: ${fontName ? `"${fontName}", ` : ""}"Hiragino Mincho ProN", "Yu Mincho", serif !important;
         ${justify ? "" : "text-align: start !important; hanging-punctuation: allow-end !important; line-break: strict !important;"}
         ${advanced ? `line-height: ${lineHeight} !important; letter-spacing: ${charSpacing / 100}em !important;` : ""}
-        padding: ${paddingY / 2}vh ${paddingX / 2}vw !important;
+        padding: ${paddingY / 2}vh ${side} !important;
+        ${spread && vertical && !chromium ? `padding-left: calc(50vw + ${side}) !important;` : ""}
         ${overlap ? `padding-bottom: calc(${paddingY / 2}vh + ${overlap}px) !important;` : ""}
         ${fontSize ? `font-size: ${fontSize}px !important;` : ""}
       }
@@ -222,20 +229,22 @@
       }
     `;
 
-    if (spacer) {
-      spacer.remove();
-      spacer = null;
-    }
+    spacers.forEach((spacer) => spacer.remove());
+    spacers = [];
     r.spacer = null;
-    if (chromium) {
+    r.pagesPerScreen = pages;
+    if (chromium && !spread) {
       return;
     }
-    spacer = document.createElement("div");
-    spacer.style.cssText = vertical
-      ? "display:block;break-inside:avoid;width:100%"
-      : `display:block;break-inside:avoid;height:100%;width:${paddingX / 2}vw`;
-    document.body.appendChild(spacer);
-    r.spacer = spacer;
+    for (let i = 0; i < pages; i++) {
+      const spacer = document.createElement("div");
+      spacer.style.cssText = vertical
+        ? "display:block;break-inside:avoid;width:100%"
+        : `display:block;break-inside:avoid;height:100%;width:${side}`;
+      document.body.appendChild(spacer);
+      spacers.push(spacer);
+    }
+    r.spacer = spacers[0];
   }
 
   function syncPageSize() {
@@ -561,10 +570,12 @@
     lineHeight = m.lh;
     charSpacing = m.cs;
     paraSpacing = m.ps;
+    spreadGap = m.sp;
     applyStyle();
     syncPageSize();
     layoutParagraphs();
     alignToNode(anchor);
+    if (restored) r.notifyPageChanged();
   }
 
   function layoutParagraphs() {

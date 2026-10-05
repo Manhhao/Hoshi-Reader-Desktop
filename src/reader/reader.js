@@ -11,6 +11,7 @@ window.hoshiReader = {
     ttuRegex: /[0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ가-힣ㄱ-ㆎ\p{Radical}\p{Unified_Ideograph}]/iu,
     activeCueId: null,
     spacer: null,
+    pagesPerScreen: 1,
     cueWrappers: new Map(),
     nodeStartOffsets: new WeakMap(),
     nodeStartRawOffsets: new WeakMap(),
@@ -153,13 +154,16 @@ window.hoshiReader = {
     },
     
     notifyPageChanged() {
-        const page = Math.round(Math.abs(document.body.scrollLeft) / this.pageWidth);
+        const page = Math.round(Math.abs(document.body.scrollLeft) / this.pageWidth) * this.pagesPerScreen;
         window.webkit?.messageHandlers?.pageChanged?.postMessage(page);
     },
     
     calculatePageStarts() {
         const { vertical, pageSize, maxScroll } = this.getScrollContext();
-        const pageCount = Math.round(maxScroll / pageSize) + 1;
+        const size = pageSize / this.pagesPerScreen;
+        const pageCount = this.pagesPerScreen > 1
+            ? Math.max(1, Math.floor(this.contentSize(vertical) / size))
+            : Math.round(maxScroll / pageSize) + 1;
         const starts = new Array(pageCount).fill(null);
         const walker = this.createWalker();
         const range = document.createRange();
@@ -179,7 +183,7 @@ window.hoshiReader = {
                     continue;
                 }
                 const position = vertical ? pageSize - rect.right : rect.left;
-                const page = Math.min(pageCount - 1, Math.max(0, Math.floor(position / pageSize)));
+                const page = Math.min(pageCount - 1, Math.max(0, Math.floor(position / size)));
                 if (starts[page] === null) {
                     let low = 0;
                     let high = node.textContent.length;
@@ -189,7 +193,7 @@ window.hoshiReader = {
                         range.setEnd(node, mid + 1);
                         const charRect = this.getRect(range);
                         const charPosition = vertical ? pageSize - charRect.right : charRect.left;
-                        if (charPosition >= page * pageSize) {
+                        if (charPosition >= page * size) {
                             high = mid;
                         } else {
                             low = mid + 1;

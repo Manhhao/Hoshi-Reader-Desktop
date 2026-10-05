@@ -165,8 +165,39 @@
   }
   let contentEl: HTMLDivElement;
   let pendingFragment: string | null = null;
+  let frameWidth = $state(0);
+  let frameHeight = $state(0);
+  const spreadGap = 48;
+  const spreadMode = $derived(readerConfig.spreadLayout && !readerConfig.paragraphMode && frameWidth > frameHeight);
 
-  function layoutQuery() {
+  function spreadAt(spineIndex: number) {
+    return spreadMode && bookInfo.chapterInfo[spine[spineIndex]]?.chapterCount !== 0;
+  }
+
+  function effectivePadding(padding: number, max: number, size: number) {
+    return Math.max(padding, max ? 100 - (max / size) * 100 : 0);
+  }
+
+  function spreadInset(spread: boolean) {
+    return spread
+      ? Math.round(
+          Math.max(
+            (frameWidth * readerConfig.horizontalPadding) / 200,
+            readerConfig.maxWidth ? (frameWidth - spreadGap) / 2 - readerConfig.maxWidth : 0,
+          ),
+        ) -
+          spreadGap / 2
+      : 0;
+  }
+
+  function frameStyle(inset: number) {
+    return `left: ${inset}px; width: calc(100% - ${2 * inset}px); height: ${vertical && !isChromium ? `calc(100% + ${readerConfig.fontSize}px)` : "100%"}`;
+  }
+
+  const spread = $derived(spreadAt(index));
+  const frameInset = $derived(spreadInset(spread));
+
+  function layoutQuery(spread: boolean) {
     const mode = vertical ? "vertical" : "horizontal";
     return (
       `mode=${mode}&fs=${readerConfig.fontSize}&hp=${readerConfig.horizontalPadding}&vp=${readerConfig.verticalPadding}&mw=${readerConfig.maxWidth}&mh=${readerConfig.maxHeight}` +
@@ -176,7 +207,7 @@
       `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
       `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.maxSentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}` +
       `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
-      `&ffile=${encodeURIComponent(readerConfig.selectedFontFile)}`
+      `&ffile=${encodeURIComponent(readerConfig.selectedFontFile)}&sp=${spread ? spreadGap : 0}`
     );
   }
 
@@ -184,7 +215,7 @@
     const href = encodeURI(spine[index]);
     return schemeUrl(
       "book",
-      `${id}/${href}?${layoutQuery()}` +
+      `${id}/${href}?${layoutQuery(spread)}` +
         `&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
@@ -304,10 +335,9 @@
   let resizing = $state(false);
   let settleTimer = 0;
 
-  let frameWidth = $state(0);
-  let frameHeight = $state(0);
   let pagesFrame = $state<HTMLIFrameElement>();
   let pagesSrc = $state<string | null>(null);
+  let pagesSpread = $state(false);
   let pagesRun = 0;
   let measuredStarts: number[][] = [];
   let pageStarts = $state.raw<number[]>([]);
@@ -315,7 +345,8 @@
   let currentPage = $state<number | null>(null);
 
   const showPages = $derived(readerConfig.progressCount === "Pages");
-  const layout = $derived(`${layoutQuery()}&w=${frameWidth}&h=${frameHeight}`);
+  const topProgress = $derived(spreadMode && readerConfig.spreadTopProgress);
+  const layout = $derived(`${layoutQuery(spreadMode)}&w=${frameWidth}&h=${frameHeight}`);
 
   function updatePages(starts: number[][]) {
     const all: number[] = [];
@@ -330,9 +361,10 @@
   }
 
   function measureSpine() {
+    pagesSpread = spreadAt(measuredStarts.length);
     pagesSrc = schemeUrl(
       "book",
-      `${id}/${encodeURI(spine[measuredStarts.length])}?${layoutQuery()}&pages=${++pagesRun}`,
+      `${id}/${encodeURI(spine[measuredStarts.length])}?${layoutQuery(pagesSpread)}&pages=${++pagesRun}`,
     );
   }
 
@@ -348,7 +380,7 @@
   }
 
   $effect(() => {
-    if (!showPages || resizing || !frameWidth || !frameHeight) return;
+    if (!(showPages || (topProgress && readerConfig.progressCount === "Characters")) || resizing || !frameWidth || !frameHeight) return;
     const key = layout;
     let cancelled = false;
     invoke<{ layout: unknown; pageStarts: number[][] } | null>("load_pages", { id }).then((cache) => {
@@ -606,8 +638,8 @@
 
   const iframeStyle = $derived(
     frozen
-      ? `width: ${frozen.w}px; height: ${frozen.h}px`
-      : `width: 100%; height: ${vertical && !isChromium ? `calc(100% + ${readerConfig.fontSize}px)` : "100%"}`,
+      ? `left: ${frameInset}px; width: ${frozen.w}px; height: ${frozen.h}px`
+      : frameStyle(frameInset),
   );
 
   function calculateCharacterProgress(chapterIndex: number, p: number) {
@@ -618,12 +650,14 @@
 
   const pageProgress = $derived.by(() => {
     if (!pageStarts.length) return null;
-    const page =
+    let page =
       currentPage !== null
         ? spineFirstPages[index] + currentPage
         : progress === 0
           ? spineFirstPages[index]
           : pageAt(currentChar, index);
+    if (spread) page -= (page - spineFirstPages[index]) % 2;
+    const nextPage = spread && page + 1 < (spineFirstPages[index + 1] ?? pageStarts.length) ? page + 2 : null;
     const chapterEnd = chapterRange.start + chapterRange.total;
     let chapterFirstPage = pageStarts.indexOf(chapterRange.start);
     if (chapterFirstPage < 0) chapterFirstPage = Math.max(pageStarts.findLastIndex((start) => start < chapterRange.start), 0);
@@ -631,7 +665,7 @@
     if (chapterLastPage < 0) chapterLastPage = chapterFirstPage;
     const chapterTotal = chapterLastPage - chapterFirstPage + 1;
     const chapterPage = Math.min(Math.max(page - chapterFirstPage + 1, 1), chapterTotal);
-    return { page: page + 1, total: pageStarts.length, chapterPage, chapterTotal };
+    return { page: page + 1, nextPage, total: pageStarts.length, chapterPage, chapterTotal };
   });
 
   function progressLine(current: number, total: number, pages: [number, number] | null): string {
@@ -645,6 +679,7 @@
     return parts.join(" ");
   }
   const progressText = $derived.by(() => {
+    if (topProgress) return "";
     const lines: string[] = [];
     if (readerConfig.showProgress) {
       const line = progressLine(currentChar, bookInfo.characterCount, pageProgress && [pageProgress.page, pageProgress.total]);
@@ -655,6 +690,22 @@
       if (line) lines.push(`(${line})`);
     }
     return lines.join(" ");
+  });
+  const spreadCorners = $derived.by(() => {
+    if (!topProgress) return null;
+    let corners = ["", ""];
+    if (readerConfig.progressCount !== "Off") {
+      const label = (page: number) => String(showPages ? page : pageStarts[page - 1]);
+      corners = pageProgress
+        ? [label(pageProgress.page), pageProgress.nextPage ? label(pageProgress.nextPage) : ""]
+        : ["…", ""];
+    }
+    if (vertical) corners.reverse();
+    return {
+      left: corners[0],
+      right: corners[1],
+      title: readerConfig.spreadChapterTitle ? (toc[currentTocIndex]?.label ?? "") : "",
+    };
   });
 
   const stats = (() =>
@@ -1211,6 +1262,7 @@
         if (typeof m.href === "string") handleLink(m.href);
         break;
       case "ready": {
+        if (spread) postRestyle();
         postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
         const cues = sasayaki?.hasMatch ? sasayaki.cues(index) : null;
         const saved = $state.snapshot(chapterHighlights());
@@ -1448,8 +1500,28 @@
       lh: readerConfig.lineHeight,
       cs: readerConfig.characterSpacing,
       ps: readerConfig.paragraphSpacing,
+      sp: spread ? spreadGap : 0,
     });
   }
+
+  $effect(() => {
+    if (!topProgress || !readerConfig.selectedFontFile) return;
+    const face = new FontFace(
+      readerConfig.selectedFont,
+      `url("${schemeUrl("book", `__hoshi/Fonts/${encodeURIComponent(readerConfig.selectedFontFile)}`)}")`,
+    );
+    document.fonts.add(face);
+    return () => {
+      document.fonts.delete(face);
+    };
+  });
+
+  let lastSpread: boolean | null = null;
+  $effect(() => {
+    const current = spreadMode;
+    if (lastSpread !== null && current !== lastSpread) postRestyle();
+    lastSpread = current;
+  });
 
   let importedFonts = $state<FontInfo[]>([]);
   invoke<FontInfo[]>("list_fonts").then((fonts) => (importedFonts = fonts));
@@ -1568,7 +1640,7 @@
             bind:this={pagesFrame}
             src={pagesSrc}
             title=""
-            style={iframeStyle}
+            style={frameStyle(spreadInset(pagesSpread))}
             class="pointer-events-none invisible absolute inset-x-0 top-0 border-0"
           ></iframe>
         {/if}
@@ -1598,16 +1670,40 @@
         class="pointer-events-none absolute text-base-content/50 transition-opacity duration-200"
         class:opacity-0={resizing}
         style="{vertical
-          ? `top: ${Math.max(2, chromeInset + marker.inset - 18)}px; left: ${chromeInsetX + marker.x}px`
+          ? `top: ${topProgress ? Math.min(chromeInset + frameHeight - marker.inset + 2, 2 * chromeInset + frameHeight - 18) : Math.max(2, chromeInset + marker.inset - 18)}px; left: ${chromeInsetX + frameInset + marker.x}px`
           : `top: ${chromeInset + marker.y - 8}px; left: ${Math.max(
               0,
-              chromeInsetX + marker.x - 20,
+              chromeInsetX + frameInset + marker.x - 20,
             )}px`}{readerInfo
           ? `; color: ${readerInfo}`
           : ''}"
       >
         <BookmarkIcon size={16} fill="currentColor" />
       </div>
+    {/if}
+
+    {#if spreadCorners}
+      {@const edge = chromeInsetX + (spread ? frameInset + spreadGap / 2 : (frameWidth * effectivePadding(readerConfig.horizontalPadding, readerConfig.maxWidth, frameWidth)) / 200)}
+      {@const top = Math.round((frameHeight * effectivePadding(readerConfig.verticalPadding, readerConfig.maxHeight, frameHeight)) / 200)}
+      {@const size = Math.max(11, Math.round(readerConfig.fontSize * 0.6))}
+      {@const color = `; font: ${size}px "${readerConfig.selectedFont}", "Hiragino Mincho ProN", "Yu Mincho", serif${readerInfo ? `; color: ${readerInfo}` : ""}`}
+      <span
+        class="pointer-events-none absolute z-20 flex h-7 max-w-[40%] items-center gap-[1em] text-base-content/60 transition-opacity duration-200"
+        class:opacity-0={resizing}
+        style="top: {top}px; left: {Math.max(edge, macChrome && top + 14 - size / 2 < 28 ? 78 : 0)}px{color}"
+      >
+        {#if spreadCorners.left}
+          <span class="tabular-nums">{spreadCorners.left}</span>
+        {/if}
+        <span class="truncate">{spreadCorners.title}</span>
+      </span>
+      <span
+        class="pointer-events-none absolute z-20 flex h-7 items-center tabular-nums text-base-content/60 transition-opacity duration-200"
+        class:opacity-0={resizing}
+        style="top: {top}px; right: {edge}px{color}"
+      >
+        {spreadCorners.right}
+      </span>
     {/if}
 
     {#snippet transportButton(Icon: typeof Play, action: () => void)}
@@ -1973,7 +2069,7 @@
       {/if}
 
       {#if panel === "Chapters"}
-        <div class="flex shrink-0 items-start gap-4 px-4 py-3">
+        <div class="flex shrink-0 items-start gap-3 px-4 py-3">
           {#if cover}
             <img
               src={schemeUrl("cover", id)}
@@ -1983,18 +2079,32 @@
           {:else}
             <div class="h-[75px] w-[50px] shrink-0 rounded bg-base-content/20"></div>
           {/if}
-          <div class="flex min-w-0 flex-col gap-1">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
             <span class="line-clamp-2 text-sm font-semibold">{title}</span>
-            <div class="flex flex-col text-xs text-base-content/60">
-              <div class="flex items-center gap-1">
-                <span class="tabular-nums">{currentChar} / {bookInfo.characterCount} ({bookPercent}%)</span>
-                <button class="btn btn-ghost btn-xs btn-square h-4 min-h-0" title="Jump to" onclick={() => (jumpToOpen = !jumpToOpen)}>
+            <div class="grid {pageProgress ? 'grid-cols-[auto_auto_auto_minmax(0,1fr)]' : 'grid-cols-[auto_auto_minmax(0,1fr)]'} items-center gap-x-2 whitespace-nowrap text-xs tabular-nums text-base-content/60">
+              <span></span>
+              <span class="flex items-center gap-1 text-base-content/40">
+                Characters
+                <button class="btn btn-ghost btn-xs btn-square h-4 min-h-0 text-base-content/60" title="Jump to" onclick={() => (jumpToOpen = !jumpToOpen)}>
                   <ArrowRightToLine class="size-3.5" />
                 </button>
-              </div>
-              <span class="tabular-nums">
-                {chapterRange.character} / {chapterRange.total} ({(chapterRange.total > 0 ? chapterRange.character / chapterRange.total * 100 : 0).toFixed(1)}%)
               </span>
+              {#if pageProgress}
+                <span class="text-base-content/40">Pages</span>
+              {/if}
+              <span></span>
+              <span>Book</span>
+              <span>{currentChar} / {bookInfo.characterCount}</span>
+              {#if pageProgress}
+                <span>{pageProgress.page} / {pageProgress.total}</span>
+              {/if}
+              <span class="overflow-hidden text-right">{bookPercent}%</span>
+              <span>Chapter</span>
+              <span>{chapterRange.character} / {chapterRange.total}</span>
+              {#if pageProgress}
+                <span>{pageProgress.chapterPage} / {pageProgress.chapterTotal}</span>
+              {/if}
+              <span class="overflow-hidden text-right">{(chapterRange.total > 0 ? chapterRange.character / chapterRange.total * 100 : 0).toFixed(1)}%</span>
             </div>
           </div>
         </div>

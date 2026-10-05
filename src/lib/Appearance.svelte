@@ -252,6 +252,31 @@
   {/if}
 {/snippet}
 
+{#snippet spread()}
+  <SettingToggle
+    label="Two-Page Spread"
+    {compact}
+    bind:checked={readerConfig.spreadLayout}
+    onchange={saveReaderConfig}
+  />
+  {#if readerConfig.spreadLayout}
+    <SettingToggle
+      label="Show Progress at Top"
+      {compact}
+      bind:checked={readerConfig.spreadTopProgress}
+      onchange={saveReaderConfig}
+    />
+    {#if readerConfig.spreadTopProgress}
+      <SettingToggle
+        label="Show Chapter Title"
+        {compact}
+        bind:checked={readerConfig.spreadChapterTitle}
+        onchange={saveReaderConfig}
+      />
+    {/if}
+  {/if}
+{/snippet}
+
 {#snippet layoutSize()}
   <SettingStepper
     label="Horizontal Padding"
@@ -372,7 +397,7 @@
     bind:checked={readerConfig.showChapterProgress}
     onchange={saveReaderConfig}
   />
-  {#if readerConfig.showProgress || readerConfig.showChapterProgress}
+  {#if readerConfig.showProgress || readerConfig.showChapterProgress || (readerConfig.spreadLayout && readerConfig.spreadTopProgress)}
     <SettingRow label="Count" {compact}>
       <div class="join">
         {#each ["Off", "Characters", "Pages"] as const as count (count)}
@@ -388,6 +413,8 @@
         {/each}
       </div>
     </SettingRow>
+  {/if}
+  {#if readerConfig.showProgress || readerConfig.showChapterProgress}
     <SettingToggle
       label="Show Percentage"
       {compact}
@@ -479,6 +506,7 @@
   </div>
   {#if tab === "Layout"}
     <SettingGroup>{@render paragraph()}</SettingGroup>
+    <SettingGroup>{@render spread()}</SettingGroup>
     <SettingGroup>{@render layoutSize()}</SettingGroup>
     <SettingGroup>{@render layoutToggles()}</SettingGroup>
     {#if readerConfig.layoutAdvanced}
@@ -505,6 +533,7 @@
       {@render layoutAdvanced()}
     {/if}
   </SettingsSection>
+  <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
   <SettingsSection title="Progress">{@render progress()}</SettingsSection>
   <SettingsSection title="Display">{@render display()}</SettingsSection>
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>

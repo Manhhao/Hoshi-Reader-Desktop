@@ -37,6 +37,9 @@ export type ReaderConfig = {
   justifyText: boolean;
   blurImages: boolean;
   layoutAdvanced: boolean;
+  spreadLayout: boolean;
+  spreadTopProgress: boolean;
+  spreadChapterTitle: boolean;
   lineHeight: number;
   characterSpacing: number;
   paragraphSpacing: number;
@@ -82,6 +85,9 @@ const defaults: ReaderConfig = {
   justifyText: false,
   blurImages: false,
   layoutAdvanced: false,
+  spreadLayout: false,
+  spreadTopProgress: true,
+  spreadChapterTitle: false,
   lineHeight: 1.65,
   characterSpacing: 0,
   paragraphSpacing: 0,
