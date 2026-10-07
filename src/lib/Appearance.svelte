@@ -61,6 +61,27 @@
     saveReaderConfig();
     await refreshFonts();
   }
+
+  const customTheme = $derived(readerConfig.customThemes[readerConfig.customTheme]);
+  let themeDialog = $state<HTMLDialogElement>();
+  let themeName = $state("");
+
+  function openThemeDialog() {
+    themeName = `Theme ${readerConfig.customThemes.length + 1}`;
+    themeDialog?.showModal();
+  }
+
+  function createTheme() {
+    readerConfig.customThemes.push({ ...customTheme, name: themeName.trim() });
+    readerConfig.customTheme = readerConfig.customThemes.length - 1;
+    saveReaderConfig();
+  }
+
+  function deleteCustomTheme() {
+    readerConfig.customThemes.splice(readerConfig.customTheme, 1);
+    readerConfig.customTheme = Math.min(readerConfig.customTheme, readerConfig.customThemes.length - 1);
+    saveReaderConfig();
+  }
 </script>
 
 {#snippet themePicker()}
@@ -97,13 +118,40 @@
     />
   {/if}
   {#if readerConfig.theme === "Custom"}
+    <SettingRow label="Theme" {compact}>
+      <div class="flex items-center gap-2">
+        <select
+          class="select select-sm w-36"
+          value={readerConfig.customTheme}
+          onchange={(e) => {
+            readerConfig.customTheme = Number(e.currentTarget.value);
+            saveReaderConfig();
+          }}
+        >
+          {#each readerConfig.customThemes as theme, index (index)}
+            <option value={index}>{theme.name}</option>
+          {/each}
+        </select>
+        <button class="btn btn-sm btn-square" aria-label="Add custom theme" onclick={openThemeDialog}>
+          <Plus class="size-4" />
+        </button>
+        <button
+          class="btn btn-ghost btn-sm btn-square text-base-content/60 hover:text-error"
+          aria-label="Delete custom theme"
+          disabled={readerConfig.customThemes.length === 1}
+          onclick={deleteCustomTheme}
+        >
+          <Trash2 class="size-4" />
+        </button>
+      </div>
+    </SettingRow>
     <SettingRow label="Interface" {compact}>
       <div class="join">
         {#each ["System", "Light", "Dark"] as const as theme (theme)}
           <button
-            class="btn join-item btn-sm {readerConfig.uiTheme === theme ? 'btn-active' : ''}"
+            class="btn join-item btn-sm {customTheme.uiTheme === theme ? 'btn-active' : ''}"
             onclick={() => {
-              readerConfig.uiTheme = theme;
+              customTheme.uiTheme = theme;
               saveReaderConfig();
             }}
           >
@@ -112,14 +160,14 @@
         {/each}
       </div>
     </SettingRow>
-    {#each [["Background Color", "customBackgroundColor"], ["Text Color", "customTextColor"], ["Info Color", "customInfoColor"]] as const as [label, key] (key)}
+    {#each [["Background Color", "backgroundColor"], ["Text Color", "textColor"], ["Info Color", "infoColor"]] as const as [label, key] (key)}
       <SettingRow {label} {compact}>
         <input
           type="color"
           class="size-5 cursor-pointer appearance-none rounded-full bg-transparent p-0 ring-1 ring-base-content/30 ring-offset-2 ring-offset-base-100 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
-          value={readerConfig[key]}
+          value={customTheme[key]}
           oninput={(e) => {
-            readerConfig[key] = e.currentTarget.value;
+            customTheme[key] = e.currentTarget.value;
             saveReaderConfig();
           }}
         />
@@ -538,3 +586,22 @@
   <SettingsSection title="Display">{@render display()}</SettingsSection>
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>
 {/if}
+
+<dialog class="modal" bind:this={themeDialog}>
+  <form method="dialog" class="modal-box" onsubmit={createTheme}>
+    <h3 class="mb-4 text-base font-semibold">New Theme</h3>
+    <input
+      class="input w-full"
+      placeholder="Theme name"
+      bind:value={themeName}
+      required
+    />
+    <div class="modal-action">
+      <button type="button" class="btn btn-sm" onclick={() => themeDialog?.close()}>Cancel</button>
+      <button class="btn btn-neutral btn-sm">Create</button>
+    </div>
+  </form>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>

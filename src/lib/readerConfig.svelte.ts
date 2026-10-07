@@ -3,7 +3,16 @@ import { isMac } from "./platform";
 
 export type FuriganaMode = "Off" | "Dimmed" | "Toggle" | "Hidden";
 export type ThemeName = "System" | "Light" | "Dark" | "Sepia" | "Custom";
+export type UiTheme = "System" | "Light" | "Dark";
 export type ProgressCount = "Off" | "Characters" | "Pages";
+
+export type CustomTheme = {
+  name: string;
+  uiTheme: UiTheme;
+  backgroundColor: string;
+  textColor: string;
+  infoColor: string;
+};
 
 export const defaultFonts = isMac
   ? ["Hiragino Mincho ProN", "Hiragino Kaku Gothic ProN"]
@@ -13,12 +22,10 @@ export type ReaderConfig = {
   theme: ThemeName;
   selectedFont: string;
   selectedFontFile: string;
-  uiTheme: ThemeName;
   systemLightSepia: boolean;
   sepiaInvertInDark: boolean;
-  customBackgroundColor: string;
-  customTextColor: string;
-  customInfoColor: string;
+  customThemes: CustomTheme[];
+  customTheme: number;
   verticalWriting: boolean;
   paragraphMode: boolean;
   maxSentencesPerPage: number;
@@ -61,12 +68,16 @@ const defaults: ReaderConfig = {
   theme: "System",
   selectedFont: defaultFonts[0],
   selectedFontFile: "",
-  uiTheme: "System",
   systemLightSepia: false,
   sepiaInvertInDark: false,
-  customBackgroundColor: "#ffffff",
-  customTextColor: "#000000",
-  customInfoColor: "#999999",
+  customThemes: [{
+    name: "Default",
+    uiTheme: "System",
+    backgroundColor: "#ffffff",
+    textColor: "#000000",
+    infoColor: "#999999",
+  }],
+  customTheme: 0,
   verticalWriting: true,
   paragraphMode: false,
   maxSentencesPerPage: 0,
@@ -110,7 +121,30 @@ const store = persisted<ReaderConfig>("reader.config", defaults);
 export const readerConfig = store.config;
 export const saveReaderConfig = store.save;
 
-const legacy = readerConfig as ReaderConfig & { showCharacters?: boolean };
+type LegacyReaderConfig = ReaderConfig & {
+  showCharacters?: boolean;
+  uiTheme?: UiTheme;
+  customBackgroundColor?: string;
+  customTextColor?: string;
+  customInfoColor?: string;
+};
+
+const legacy = readerConfig as LegacyReaderConfig;
+if (legacy.customBackgroundColor !== undefined) {
+  readerConfig.customThemes = [{
+    name: "Default",
+    uiTheme: legacy.uiTheme ?? "System",
+    backgroundColor: legacy.customBackgroundColor,
+    textColor: legacy.customTextColor ?? "#000000",
+    infoColor: legacy.customInfoColor ?? "#999999",
+  }];
+  delete legacy.uiTheme;
+  delete legacy.customBackgroundColor;
+  delete legacy.customTextColor;
+  delete legacy.customInfoColor;
+  saveReaderConfig();
+}
+
 if (legacy.showCharacters !== undefined) {
   if (!legacy.showCharacters) readerConfig.progressCount = "Off";
   delete legacy.showCharacters;

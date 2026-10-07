@@ -12,8 +12,12 @@ function schemeOf(theme: ThemeName): "light" | "dark" | null {
   return null;
 }
 
+function customTheme() {
+  return readerConfig.customThemes[readerConfig.customTheme];
+}
+
 export function chromeOverride(): "light" | "dark" | null {
-  if (readerConfig.theme === "Custom") return schemeOf(readerConfig.uiTheme);
+  if (readerConfig.theme === "Custom") return schemeOf(customTheme().uiTheme);
   if (readerConfig.theme === "Sepia" && readerConfig.sepiaInvertInDark) return null;
   return schemeOf(readerConfig.theme);
 }
@@ -36,18 +40,18 @@ function sepiaActive(): boolean {
 export function readerBackground(): string {
   if (sepiaInverted()) return "#18150c";
   if (sepiaActive()) return "#f2e2c9";
-  if (readerConfig.theme === "Custom") return readerConfig.customBackgroundColor;
+  if (readerConfig.theme === "Custom") return customTheme().backgroundColor;
   return resolvedScheme() === "dark" ? "#000000" : "#ffffff";
 }
 
 export function readerTextColor(): string | null {
   if (sepiaInverted()) return "#f2e2c9";
   if (sepiaActive()) return "#332a1b";
-  return readerConfig.theme === "Custom" ? readerConfig.customTextColor : null;
+  return readerConfig.theme === "Custom" ? customTheme().textColor : null;
 }
 
 export function infoColor(): string | null {
-  return readerConfig.theme === "Custom" ? readerConfig.customInfoColor : null;
+  return readerConfig.theme === "Custom" ? customTheme().infoColor : null;
 }
 
 export function chromeTheme(reading: boolean): "hoshi-light" | "hoshi-dark" | "hoshi-sepia" {
