@@ -39,8 +39,10 @@ hoshidicts = { git = "https://github.com/Manhhao/hoshidicts-rs.git", branch = "m
 mp3lame-encoder = "0.2.4"
 unicode-normalization = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tokio = { version = "1", features = ["sync", "time", "macros"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "net", "io-util", "fs"] }
 tokio-util = "0.7"
+tokio-tungstenite = "0.28"
+futures-util = { version = "0.3", features = ["sink"] }
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
 opus = "0.4"
 ogg = "0.9"

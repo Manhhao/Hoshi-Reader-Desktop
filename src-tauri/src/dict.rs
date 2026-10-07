@@ -1,13 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use hoshidicts::{Deinflector, LookupFrequencyOrder, LookupOptions, OwnedLookup, Query};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tauri::http::{Request, Response, header::CONTENT_TYPE};
-use tauri::{AppHandle, Emitter, Manager, State, UriSchemeContext, Wry};
+use tauri::{AppHandle, Emitter, Manager, State};
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::library::{read_json, write_json};
 
@@ -368,6 +372,9 @@ struct Entry {
     expression: String,
     reading: String,
     matched: String,
+    deinflected: String,
+    score: i32,
+    preprocessor_steps: i32,
     deinflection_trace: Vec<Trace>,
     glossaries: Vec<Glossary>,
     frequencies: Vec<FreqGroup>,
@@ -513,6 +520,9 @@ pub fn lookup(
                 expression: term.expression().to_string(),
                 reading: term.reading().to_string(),
                 matched: result.matched().to_string(),
+                deinflected: result.deinflected().to_string(),
+                score: term.score(),
+                preprocessor_steps: result.preprocessor_steps(),
                 deinflection_trace,
                 glossaries,
                 frequencies,
@@ -531,6 +541,14 @@ pub struct KanjiEntry {
     onyomi: String,
     kunyomi: String,
     meanings: Vec<String>,
+    tags: String,
+    stats: Vec<KanjiStat>,
+}
+
+#[derive(Serialize)]
+struct KanjiStat {
+    name: String,
+    value: String,
 }
 
 #[derive(Serialize)]
@@ -556,6 +574,15 @@ pub fn lookup_kanji(
                 onyomi: entry.onyomi().to_string(),
                 kunyomi: entry.kunyomi().to_string(),
                 meanings: entry.definitions().map(str::to_string).collect(),
+                tags: entry.tags().to_string(),
+                stats: entry
+                    .stats()
+                    .iter()
+                    .map(|stat| KanjiStat {
+                        name: stat.key().to_string(),
+                        value: stat.value().to_string(),
+                    })
+                    .collect(),
             })
             .collect();
         if entries.is_empty() {
@@ -607,10 +634,7 @@ fn media_mime(path: &str) -> &'static str {
     }
 }
 
-pub fn image_protocol(
-    ctx: UriSchemeContext<'_, Wry>,
-    request: Request<Vec<u8>>,
-) -> Response<Vec<u8>> {
+pub fn image_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let query = request.uri().query().unwrap_or("");
     let param = |key: &str| {
         query
@@ -621,7 +645,7 @@ pub fn image_protocol(
             .unwrap_or_default()
     };
     let path = param("path");
-    let bytes = media_file(ctx.app_handle(), &param("dictionary"), &path);
+    let bytes = media_file(app, &param("dictionary"), &path);
     if bytes.is_empty() {
         return Response::builder().status(404).body(Vec::new()).unwrap();
     }
@@ -636,6 +660,782 @@ pub fn image_protocol(
 pub struct ImportSummary {
     imported: Vec<String>,
     failed: Vec<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SharedDictionary {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    pub revision: String,
+    pub file_name: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub kinds: Vec<String>,
+    pub enabled: bool,
+    pub favorite: bool,
+    pub display_name: Option<String>,
+    pub term_count: u64,
+    pub frequency_count: u64,
+    pub pitch_count: u64,
+    pub kanji_count: u64,
+    pub media_count: u64,
+    pub path: String,
+}
+
+fn safe_dictionary_component(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && !value
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c == ':' || c.is_control())
+}
+
+fn safe_shared_path(value: &str) -> bool {
+    value.split('/').all(safe_dictionary_component)
+}
+
+fn shared_dictionary_path(
+    app: &AppHandle,
+    kind: DictionaryType,
+    file_name: &str,
+) -> Result<PathBuf, String> {
+    if !safe_dictionary_component(file_name) {
+        return Err("Invalid dictionary folder".to_string());
+    }
+    let root = dictionaries_dir(app);
+    let category = root.join(kind.directory());
+    let dictionary = category.join(file_name);
+    for path in [&root, &category, &dictionary] {
+        let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err("Dictionary folders must be regular directories".to_string());
+        }
+    }
+    Ok(dictionary)
+}
+
+fn collect_shared_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<(String, PathBuf, u64)>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory).map_err(|error| error.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+        if metadata.file_type().is_symlink() {
+            return Err("Dictionary sharing does not follow symbolic links".to_string());
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| error.to_string())?
+            .to_str()
+            .ok_or("Dictionary file names must be valid Unicode")?
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        if !safe_shared_path(&relative) {
+            return Err("Invalid dictionary file path".to_string());
+        }
+        if metadata.is_dir() {
+            collect_shared_files(root, &path, files)?;
+        } else if metadata.is_file() {
+            files.push((relative, path, metadata.len()));
+        } else {
+            return Err("Dictionary sharing accepts only regular files".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn native_dictionary_counts(index: &serde_json::Value) -> [u64; 5] {
+    let count = |path: &str| {
+        index
+            .pointer(path)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+    };
+    [
+        count("/counts/terms/total"),
+        count("/counts/termMeta/freq"),
+        count("/counts/termMeta/pitch").saturating_add(count("/counts/termMeta/ipa")),
+        count("/counts/kanji/total"),
+        count("/counts/media/total"),
+    ]
+}
+
+fn shared_dictionary_entries(app: &AppHandle) -> Result<Vec<(SharedDictionary, PathBuf)>, String> {
+    let config = load_config(app);
+    let mut dictionaries: Vec<(SharedDictionary, PathBuf)> = Vec::new();
+    for kind in DictionaryType::all() {
+        for entry in entries_for(&config, kind) {
+            let path = shared_dictionary_path(app, kind, &entry.file_name)?;
+            let index_metadata =
+                fs::symlink_metadata(path.join("index.json")).map_err(|error| error.to_string())?;
+            if !index_metadata.is_file()
+                || index_metadata.file_type().is_symlink()
+                || index_metadata.len() > 8 * 1024 * 1024
+            {
+                return Err("Invalid dictionary metadata file".to_string());
+            }
+            let index: serde_json::Value =
+                read_json(&path.join("index.json")).ok_or("Could not read dictionary metadata")?;
+            let title = index
+                .get("title")
+                .and_then(|value| value.as_str())
+                .unwrap_or(&entry.file_name);
+            let revision = index
+                .get("revision")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            if !safe_dictionary_component(title) {
+                continue;
+            }
+            if let Some((dictionary, _)) = dictionaries.iter_mut().find(|(dictionary, _)| {
+                dictionary.title == title && dictionary.revision == revision
+            }) {
+                dictionary.enabled |= entry.is_enabled;
+                continue;
+            }
+            let [
+                term_count,
+                frequency_count,
+                pitch_count,
+                kanji_count,
+                media_count,
+            ] = native_dictionary_counts(&index);
+            let id: String = Sha256::digest(title.as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            dictionaries.push((
+                SharedDictionary {
+                    id: id.clone(),
+                    name: title.to_string(),
+                    title: title.to_string(),
+                    revision: revision.to_string(),
+                    file_name: format!("{id}.hachidori.zip"),
+                    kind: kind.directory().to_lowercase(),
+                    kinds: [
+                        ("term", term_count),
+                        ("freq", frequency_count),
+                        ("pitch", pitch_count),
+                        ("kanji", kanji_count),
+                        ("media", media_count),
+                    ]
+                    .into_iter()
+                    .filter_map(|(kind, count)| (count > 0).then(|| kind.to_string()))
+                    .collect(),
+                    enabled: entry.is_enabled,
+                    favorite: false,
+                    display_name: None,
+                    term_count,
+                    frequency_count,
+                    pitch_count,
+                    kanji_count,
+                    media_count,
+                    path: format!("/dicts/{id}/package/{title}"),
+                },
+                path,
+            ));
+        }
+    }
+    Ok(dictionaries)
+}
+
+pub(crate) fn shared_dictionaries(app: &AppHandle) -> Result<Vec<SharedDictionary>, String> {
+    let state = app.state::<LookupState>();
+    let _engine = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(shared_dictionary_entries(app)?
+        .into_iter()
+        .map(|(dictionary, _)| dictionary)
+        .collect())
+}
+
+pub(crate) fn export_shared_dictionary(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    let state = app.state::<LookupState>();
+    let _engine = state.0.lock().map_err(|error| error.to_string())?;
+    let (dictionary, root) = shared_dictionary_entries(app)?
+        .into_iter()
+        .find(|(dictionary, _)| dictionary.id == id)
+        .ok_or("Unknown dictionary")?;
+    let mut files = Vec::new();
+    collect_shared_files(&root, &root, &mut files)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let manifest = json!({
+        "format": "hachidori-backup", "version": 2,
+        "createdAt": chrono::Utc::now().to_rfc3339(),
+        "snapshot": {
+            "state": { "schemaVersion": 1, "revision": 0, "dictionaries": [dictionary], "groups": [] },
+            "options": { "revision": 0 },
+            "document": {
+                "schemaVersion": 1, "revision": 0,
+                "semanticRevision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945", "text": ""
+            },
+            "updates": { "revision": 0, "schedule": "off", "lastCheckedAt": null },
+            "lookupStats": { "generation": null, "revision": 0 }
+        },
+        "lookupStatsRows": [],
+        "files": files.iter().map(|(relative, _, size)| json!({ "path": format!("dictionaries/0/{relative}"), "size": size })).collect::<Vec<_>>()
+    });
+    let output = std::env::temp_dir().join(format!("hoshi-share-{}.zip", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<(), String> {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&output)
+            .map_err(|error| error.to_string())?;
+        let mut writer = ZipWriter::new(BufWriter::new(file));
+        let options = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Stored)
+            .large_file(true);
+        writer
+            .start_file("hachidori-backup.json", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(&serde_json::to_vec(&manifest).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+        for (relative, path, _) in files {
+            writer
+                .start_file(format!("dictionaries/0/{relative}"), options)
+                .map_err(|error| error.to_string())?;
+            let mut source = fs::File::open(&path).map_err(|error| error.to_string())?;
+            io::copy(&mut source, &mut writer).map_err(|error| error.to_string())?;
+        }
+        writer
+            .finish()
+            .map_err(|error| error.to_string())?
+            .flush()
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        fs::remove_file(&output).ok();
+        return Err(error);
+    }
+    Ok(output)
+}
+
+fn extract_shared_dictionary(archive_path: &Path, staging: &Path) -> Result<String, String> {
+    let mut archive =
+        ZipArchive::new(fs::File::open(archive_path).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
+    let manifest: serde_json::Value = {
+        let file = archive
+            .by_name("hachidori-backup.json")
+            .map_err(|_| "Not a Hachidori dictionary archive")?;
+        if file.size() > 16 * 1024 * 1024 {
+            return Err("Dictionary archive manifest is too large".to_string());
+        }
+        serde_json::from_reader(file.take(16 * 1024 * 1024 + 1))
+            .map_err(|error| error.to_string())?
+    };
+    if manifest.get("format").and_then(|value| value.as_str()) != Some("hachidori-backup")
+        || !matches!(
+            manifest.get("version").and_then(|value| value.as_u64()),
+            Some(1 | 2)
+        )
+    {
+        return Err("Unsupported dictionary archive format".to_string());
+    }
+    let dictionaries = manifest
+        .pointer("/snapshot/state/dictionaries")
+        .and_then(|value| value.as_array())
+        .ok_or("Missing dictionary metadata")?;
+    if dictionaries.len() != 1 {
+        return Err("Select a dictionary archive containing exactly one dictionary".to_string());
+    }
+    let title = dictionaries[0]
+        .get("title")
+        .and_then(|value| value.as_str())
+        .filter(|title| safe_dictionary_component(title))
+        .ok_or("Invalid dictionary title")?
+        .to_string();
+    let listed = manifest
+        .get("files")
+        .and_then(|value| value.as_array())
+        .ok_or("Missing dictionary file list")?;
+    if listed.len() > 100_000 {
+        return Err("Dictionary archive contains too many files".to_string());
+    }
+    if archive.len() != listed.len() + 1 {
+        return Err("Dictionary archive contains missing or unlisted files".to_string());
+    }
+    let mut files = HashMap::new();
+    let mut total_size = 0_u64;
+    for entry in listed {
+        let name = entry
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or("Invalid dictionary file path")?;
+        let relative = name
+            .strip_prefix("dictionaries/0/")
+            .filter(|relative| safe_shared_path(relative))
+            .ok_or("Invalid dictionary file path")?;
+        let size = entry
+            .get("size")
+            .and_then(|value| value.as_u64())
+            .ok_or("Invalid dictionary file size")?;
+        total_size = total_size
+            .checked_add(size)
+            .filter(|size| *size <= 16 * 1024 * 1024 * 1024)
+            .ok_or("Dictionary archive exceeds 16 GiB")?;
+        if files
+            .insert(name.to_string(), (relative.to_string(), size))
+            .is_some()
+        {
+            return Err("Duplicate dictionary file".to_string());
+        }
+    }
+    for (relative, _) in files.values() {
+        let mut parent = Path::new(relative).parent();
+        while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
+            let name = format!(
+                "dictionaries/0/{}",
+                path.to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/")
+            );
+            if files.contains_key(&name) {
+                return Err("Dictionary file is also used as a directory".to_string());
+            }
+            parent = path.parent();
+        }
+    }
+    fs::create_dir(staging).map_err(|error| error.to_string())?;
+    let mut seen = HashSet::new();
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).map_err(|error| error.to_string())?;
+        let name = file.name().to_string();
+        let kind = file.unix_mode().unwrap_or(0) & 0o170000;
+        if !seen.insert(name.clone())
+            || file.is_dir()
+            || (kind != 0 && kind != 0o100000)
+            || file.compression() != CompressionMethod::Stored
+        {
+            return Err(
+                "Dictionary archives must contain unique, uncompressed regular files".to_string(),
+            );
+        }
+        if name == "hachidori-backup.json" {
+            continue;
+        }
+        let (relative, size) = files.get(&name).ok_or("Unlisted dictionary file")?;
+        if file.size() != *size {
+            return Err("Incorrect dictionary file size".to_string());
+        }
+        let destination = staging.join(relative);
+        fs::create_dir_all(destination.parent().ok_or("Invalid dictionary file path")?)
+            .map_err(|error| error.to_string())?;
+        let mut output = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .map_err(|error| error.to_string())?;
+        if io::copy(&mut file, &mut output).map_err(|error| error.to_string())? != *size {
+            return Err("Incomplete dictionary file".to_string());
+        }
+    }
+    Ok(title)
+}
+
+pub(crate) fn downgrade_shared_dictionary(path: &std::path::Path) -> Result<(), String> {
+    use std::collections::BTreeSet;
+    use std::fs::{self, File, OpenOptions};
+    use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+
+    struct RecordReader {
+        file: File,
+        position: u64,
+        limit: u64,
+    }
+
+    impl RecordReader {
+        fn read<const N: usize>(&mut self) -> Result<[u8; N], String> {
+            let end = self
+                .position
+                .checked_add(N as u64)
+                .filter(|end| *end <= self.limit)
+                .ok_or_else(|| {
+                    "Shared dictionary contains a truncated native record".to_string()
+                })?;
+            let mut bytes = [0; N];
+            self.file
+                .read_exact(&mut bytes)
+                .map_err(|error| error.to_string())?;
+            self.position = end;
+            Ok(bytes)
+        }
+
+        fn skip(&mut self, length: u64) -> Result<(), String> {
+            let end = self
+                .position
+                .checked_add(length)
+                .filter(|end| *end <= self.limit)
+                .ok_or_else(|| {
+                    "Shared dictionary contains a truncated native record".to_string()
+                })?;
+            self.file
+                .seek(SeekFrom::Start(end))
+                .map_err(|error| error.to_string())?;
+            self.position = end;
+            Ok(())
+        }
+    }
+
+    let markers: Vec<_> = (1..=6)
+        .filter(|version| path.join(format!(".hoshidicts_{version}")).is_file())
+        .collect();
+    if markers.len() != 1 {
+        return Err(
+            "Dictionary must contain exactly one supported engine format marker".to_string(),
+        );
+    }
+    let version = if path.join(".hoshidicts_6").is_file() {
+        6
+    } else if path.join(".hoshidicts_5").is_file() {
+        5
+    } else {
+        return Ok(());
+    };
+    let blobs_path = path.join("blobs.bin");
+    let blob_size = fs::metadata(&blobs_path)
+        .map_err(|error| error.to_string())?
+        .len();
+    let mut table =
+        BufReader::new(File::open(path.join("hash.table")).map_err(|error| error.to_string())?);
+    let table_size = table
+        .get_ref()
+        .metadata()
+        .map_err(|error| error.to_string())?
+        .len();
+    let mut capacity_bytes = [0; 4];
+    table
+        .read_exact(&mut capacity_bytes)
+        .map_err(|error| error.to_string())?;
+    let capacity = u32::from_le_bytes(capacity_bytes);
+    if capacity < 16
+        || u64::from(capacity)
+            .checked_mul(16)
+            .and_then(|size| size.checked_add(4))
+            != Some(table_size)
+    {
+        return Err("Shared dictionary contains an invalid native hash table".to_string());
+    }
+    let mut indexes = BTreeSet::new();
+    for _ in 0..capacity {
+        let mut slot = [0; 16];
+        table
+            .read_exact(&mut slot)
+            .map_err(|error| error.to_string())?;
+        let hash = u64::from_le_bytes(slot[..8].try_into().unwrap());
+        let offset = u64::from_le_bytes(slot[8..].try_into().unwrap());
+        if hash == 0 {
+            if offset != 0 {
+                return Err("Shared dictionary contains an invalid native hash slot".to_string());
+            }
+            continue;
+        }
+        if offset == 0
+            || offset
+                .checked_add(4)
+                .filter(|end| *end <= blob_size)
+                .is_none()
+        {
+            return Err("Shared dictionary contains an invalid native index offset".to_string());
+        }
+        indexes.insert(offset);
+    }
+    let index_start = *indexes
+        .first()
+        .ok_or_else(|| "Shared dictionary contains an empty native hash table".to_string())?;
+    let mut reader = RecordReader {
+        file: File::open(&blobs_path).map_err(|error| error.to_string())?,
+        position: 0,
+        limit: blob_size,
+    };
+    let mut records = BTreeSet::new();
+    for index in indexes {
+        reader
+            .file
+            .seek(SeekFrom::Start(index))
+            .map_err(|error| error.to_string())?;
+        reader.position = index;
+        let count = u32::from_le_bytes(reader.read::<4>()?);
+        if u64::from(count)
+            .checked_mul(8)
+            .and_then(|size| reader.position.checked_add(size))
+            .filter(|end| *end <= blob_size)
+            .is_none()
+        {
+            return Err("Shared dictionary contains a truncated native index".to_string());
+        }
+        for _ in 0..count {
+            let offset = u64::from_le_bytes(reader.read::<8>()?);
+            if offset >= index_start {
+                return Err(
+                    "Shared dictionary contains an invalid native record offset".to_string()
+                );
+            }
+            records.insert(offset);
+        }
+    }
+    let mut output = OpenOptions::new()
+        .write(true)
+        .open(&blobs_path)
+        .map_err(|error| error.to_string())?;
+    let mut record_offsets = records.into_iter().peekable();
+    while let Some(offset) = record_offsets.next() {
+        reader
+            .file
+            .seek(SeekFrom::Start(offset))
+            .map_err(|error| error.to_string())?;
+        reader.position = offset;
+        reader.limit = record_offsets.peek().copied().unwrap_or(index_start);
+        let kind = reader.read::<1>()?[0];
+        if kind > 2 {
+            return Err("Shared dictionary contains an invalid native record type".to_string());
+        }
+        if kind != 0 {
+            continue;
+        }
+        for _ in 0..2 {
+            let length = u16::from_le_bytes(reader.read::<2>()?);
+            reader.skip(u64::from(length))?;
+        }
+        let glossary_offset = u64::from_le_bytes(reader.read::<8>()?);
+        let glossary_size = u32::from_le_bytes(reader.read::<4>()?);
+        if glossary_offset
+            .checked_add(u64::from(glossary_size))
+            .filter(|end| *end <= offset)
+            .is_none()
+        {
+            return Err("Shared dictionary contains an invalid native glossary range".to_string());
+        }
+        for _ in 0..3 {
+            let length = reader.read::<1>()?[0];
+            reader.skip(u64::from(length))?;
+        }
+        let redirects = u32::from_le_bytes(reader.read::<4>()?);
+        if u64::from(redirects) > (reader.limit - reader.position) / 8 {
+            return Err("Shared dictionary contains invalid native redirects".to_string());
+        }
+        for _ in 0..redirects {
+            let length = u32::from_le_bytes(reader.read::<4>()?);
+            reader.skip(u64::from(length))?;
+            let rules = u32::from_le_bytes(reader.read::<4>()?);
+            if u64::from(rules) > (reader.limit - reader.position) / 4 {
+                return Err("Shared dictionary contains invalid native redirect rules".to_string());
+            }
+            for _ in 0..rules {
+                let length = u32::from_le_bytes(reader.read::<4>()?);
+                reader.skip(u64::from(length))?;
+            }
+        }
+        let score_offset = reader.position;
+        let score = f64::from_le_bytes(reader.read::<8>()?);
+        if !score.is_finite() {
+            return Err("Shared dictionary contains a non-finite native score".to_string());
+        }
+        output
+            .seek(SeekFrom::Start(score_offset))
+            .map_err(|error| error.to_string())?;
+        output
+            .write_all(&(score as i32).to_le_bytes())
+            .map_err(|error| error.to_string())?;
+    }
+    output.sync_all().map_err(|error| error.to_string())?;
+    fs::write(path.join(format!(".hoshidicts_{}", version - 2)), [])
+        .map_err(|error| error.to_string())?;
+    for marker in [".hoshidicts_5", ".hoshidicts_6"] {
+        let marker = path.join(marker);
+        if marker.exists() {
+            fs::remove_file(marker).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_shared_dictionary(path: &Path, title: &str) -> Result<Vec<DictionaryType>, String> {
+    let markers: Vec<_> = (1..=6)
+        .filter(|version| path.join(format!(".hoshidicts_{version}")).is_file())
+        .collect();
+    if markers.len() != 1 {
+        return Err("Dictionary is missing a supported engine format marker".to_string());
+    }
+    if markers[0] > 4 {
+        return Err("This dictionary uses a newer engine format".to_string());
+    }
+    for name in ["index.json", "blobs.bin", "hash.table", "bloom.filter"] {
+        let metadata =
+            fs::metadata(path.join(name)).map_err(|_| format!("Dictionary is missing {name}"))?;
+        if !metadata.is_file() || metadata.len() == 0 {
+            return Err(format!("Dictionary has an invalid {name}"));
+        }
+    }
+    if fs::metadata(path.join("index.json"))
+        .map_err(|error| error.to_string())?
+        .len()
+        > 8 * 1024 * 1024
+    {
+        return Err("Dictionary metadata is too large".to_string());
+    }
+    if markers[0] == 4 && !path.join("dict.zstd").is_file() {
+        return Err("Dictionary is missing its compression dictionary".to_string());
+    }
+    let index_path = path.join("index.json");
+    let original_index = fs::read(&index_path).map_err(|error| error.to_string())?;
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&original_index).map_err(|error| error.to_string())?;
+    if index.get("title").and_then(|value| value.as_str()) != Some(title) {
+        return Err("Dictionary title does not match its archive".to_string());
+    }
+    let [terms, frequency, pitch, kanji, _] = native_dictionary_counts(&index);
+    let kinds: Vec<_> = [
+        (DictionaryType::Term, terms),
+        (DictionaryType::Frequency, frequency),
+        (DictionaryType::Pitch, pitch),
+        (DictionaryType::Kanji, kanji),
+    ]
+    .into_iter()
+    .filter_map(|(kind, count)| (count > 0).then_some(kind))
+    .collect();
+    if kinds.is_empty() {
+        return Err("Dictionary contains no supported entries".to_string());
+    }
+    index["styles"] = json!(".hoshi-share-validation{}");
+    fs::write(
+        &index_path,
+        serde_json::to_vec(&index).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let loaded = (|| -> Result<(), String> {
+        let mut query = Query::new();
+        query
+            .add_term_dict(path)
+            .map_err(|error| error.to_string())?;
+        let styles = query.styles().map_err(|error| error.to_string())?;
+        if !styles
+            .styles()
+            .iter()
+            .any(|style| style.dict_name() == title)
+        {
+            return Err("Dictionary files could not be loaded by the engine".to_string());
+        }
+        Ok(())
+    })();
+    fs::write(&index_path, original_index).map_err(|error| error.to_string())?;
+    loaded?;
+    Ok(kinds)
+}
+
+fn install_shared_dictionary(
+    app: &AppHandle,
+    source: &Path,
+    title: &str,
+    kinds: &[DictionaryType],
+) -> Result<(), String> {
+    let root = dictionaries_dir(app);
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    if fs::symlink_metadata(&root)
+        .map_err(|error| error.to_string())?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("Dictionary folders must not be symbolic links".to_string());
+    }
+    let mut config = load_config(app);
+    let previous = remove_entries_for_title(app, &mut config, title);
+    let folder = previous
+        .first()
+        .map(|(_, entry)| entry.file_name.as_str())
+        .unwrap_or(title);
+    if !safe_dictionary_component(folder) {
+        return Err("Invalid installed dictionary folder".to_string());
+    }
+    let staging = root.join(format!(".sharing-import-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&staging).map_err(|error| error.to_string())?;
+    let mut backups = Vec::new();
+    let mut installed = Vec::new();
+    let result = (|| -> Result<(), String> {
+        for kind in kinds {
+            copy_directory(source, &staging.join(kind.directory()))?;
+        }
+        let mut destinations = HashSet::new();
+        for (kind, entry) in &previous {
+            let destination = shared_dictionary_path(app, *kind, &entry.file_name)?;
+            if destinations.insert(destination.clone()) {
+                let backup = staging.join(format!("previous-{}", backups.len()));
+                fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
+                backups.push((destination, backup));
+            }
+        }
+        for kind in kinds {
+            let category = root.join(kind.directory());
+            fs::create_dir_all(&category).map_err(|error| error.to_string())?;
+            if fs::symlink_metadata(&category)
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink()
+            {
+                return Err("Dictionary folders must not be symbolic links".to_string());
+            }
+            let destination = category.join(folder);
+            if destination.exists() || fs::symlink_metadata(&destination).is_ok() {
+                return Err("A different dictionary already occupies this folder".to_string());
+            }
+            fs::rename(staging.join(kind.directory()), &destination)
+                .map_err(|error| error.to_string())?;
+            installed.push(destination);
+            let old = previous.iter().find(|(old_kind, _)| old_kind == kind);
+            add_import_entry(
+                &mut config,
+                *kind,
+                folder.to_string(),
+                old.map(|(_, entry)| entry),
+            );
+        }
+        update_orders(&mut config);
+        let next_config = staging.join("config.json");
+        write_json(&next_config, &config)?;
+        fs::rename(next_config, root.join("config.json")).map_err(|error| error.to_string())
+    })();
+    if let Err(error) = result {
+        for destination in installed {
+            fs::remove_dir_all(destination).ok();
+        }
+        for (destination, backup) in backups.into_iter().rev() {
+            if let Err(rollback) = fs::rename(&backup, &destination) {
+                return Err(format!(
+                    "{error}; previous dictionary remains at {}: {rollback}",
+                    backup.display()
+                ));
+            }
+        }
+        fs::remove_dir_all(staging).ok();
+        return Err(error);
+    }
+    fs::remove_dir_all(staging).ok();
+    Ok(())
+}
+
+pub(crate) fn import_shared_dictionary(
+    app: &AppHandle,
+    state: &State<LookupState>,
+    archive: &Path,
+) -> Result<String, String> {
+    let staging = std::env::temp_dir().join(format!("hoshi-dictionary-{}", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let title = extract_shared_dictionary(archive, &staging)?;
+        downgrade_shared_dictionary(&staging)?;
+        let kinds = validate_shared_dictionary(&staging, &title)?;
+        let _engine = state.lock_for_update();
+        install_shared_dictionary(app, &staging, &title, &kinds)?;
+        Ok(title)
+    })();
+    fs::remove_dir_all(staging).ok();
+    result
 }
 
 fn has_kind(result: &hoshidicts::Import, kind: DictionaryType) -> bool {

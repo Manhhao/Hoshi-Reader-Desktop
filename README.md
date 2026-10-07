@@ -28,11 +28,22 @@ Download the `.dmg` for macOS 15+ (Apple Silicon) or the `-setup.exe` for Window
 
 - Vertical (縦書き) and horizontal (横書き) text
 - Pop-up dictionary with support for Yomitan term, frequency, pitch and kanji dictionaries
+- Dictionary downloads and remote word lookup through the Hachidori relay, with a local sharing server
 - Audio support for local and remote sources
 - Sasayaki (audiobooks)
 - Reading statistics
 - Mining using AnkiConnect (mainly supports handlebars used by [Lapis](https://github.com/donkuri/lapis#how-to-use-lapis))
 - Syncing of books, shelves, bookmarks, highlights and Sasayaki with iOS and Android
+
+## Dictionary sharing
+
+Open **Settings → Dictionaries → Dictionary Sharing** to copy dictionaries between apps or choose a remote lookup source. Install the [hachidori-anki relay](https://github.com/bee-san/hachidori-anki), restart Anki, keep it open, and enable sharing in Hachidori. The default Hachidori addresses are `ws://127.0.0.1:8771/link` for lookups and `http://127.0.0.1:19633` for dictionary downloads.
+
+- To copy a dictionary into Hoshi Reader, enter the other app's addresses, apply changes, select **Connect and List Dictionaries**, then **Download and Import**. Downloaded dictionaries become local dictionaries and work without the other app running.
+- To use Hachidori's dictionaries directly, choose **Other app through the relay** as the lookup source and apply changes. Keep Anki and the sharing Hachidori open while reading. Both word and kanji lookup use the remote source.
+- To share Hoshi Reader's installed dictionaries, enable **Share Hoshi Reader Dictionaries** and apply changes. In Hachidori's sharing settings, connect to the displayed lookup address. The default is `ws://127.0.0.1:8772/link`; dictionary downloads use `http://127.0.0.1:8772/dictionaries` and `http://127.0.0.1:8772/dictionaries/<id>`. This read-only server listens on this computer while Hoshi Reader is open and does not require Anki.
+
+Dictionary downloads use Hachidori's native backup archive format. To install an exported Hoshi Reader dictionary in Hachidori, use **Backup & Restore**, which replaces the destination's dictionary library and settings with the archive. Save a backup first if you have existing dictionaries. Hoshi Reader also accepts Yomitan ZIPs from other compatible dictionary APIs. Newer Hachidori native formats 5 and 6 are converted to Hoshi Reader's formats 3 and 4 during import; fractional dictionary priority scores are truncated to integers, with scores outside the integer range clamped. Dictionary entries, media, and archive offsets are preserved.
 
 ## Development
 

@@ -52,6 +52,7 @@
   import { SasayakiPlayer } from "./sasayakiPlayer.svelte";
   import MatchDialog from "./MatchDialog.svelte";
   import { dictConfig } from "./dictConfig.svelte";
+  import { lookupDictionary as lookup, lookupKanji as redirectKanji } from "./sharingConfig.svelte";
   import { hotkeyConfig, normalizeHotkey, readerHotkeys } from "./hotkeyConfig.svelte";
   import { statsConfig } from "./statsConfig.svelte";
   import { syncConfig } from "./syncConfig.svelte";
@@ -65,9 +66,7 @@
     Bookmark,
     BookSearchResult,
     FontInfo,
-    KanjiResponse,
     LookupEntry,
-    LookupResponse,
     MineContent,
     PopupAnkiConfig,
     SasayakiMatch,
@@ -587,20 +586,6 @@
       },
     ];
     return [...response.entries[0].matched].length;
-  }
-
-  function lookup(text: string): Promise<LookupResponse> {
-    return invoke<LookupResponse>("lookup", {
-      text,
-      maxResults: dictConfig.maxResults,
-      scanLength: dictConfig.scanLength,
-      frequencySortOrder: dictConfig.frequencySortOrder,
-      frequencySortDictionary: dictConfig.frequencySortDictionary,
-    });
-  }
-
-  function redirectKanji(character: string): Promise<KanjiResponse | null> {
-    return invoke<KanjiResponse | null>("lookup_kanji", { character });
   }
 
   function mineEntry(content: MineContent, popup: PopupInstance): Promise<boolean> {

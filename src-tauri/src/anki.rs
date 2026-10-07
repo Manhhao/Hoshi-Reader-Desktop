@@ -965,7 +965,10 @@ pub async fn anki_mine(
             if !fields.values().any(|value| value.contains(&media.filename)) {
                 continue;
             }
-            let bytes = dict::media_file(&app, &media.dictionary, &media.path);
+            let Ok(bytes) = crate::sharing::media_file(&app, &media.dictionary, &media.path).await
+            else {
+                return false;
+            };
             let ext = media.path.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
             let filename = format!("hoshi_dict_{}.{ext}", sha1_hex(&bytes));
             for value in fields.values_mut() {

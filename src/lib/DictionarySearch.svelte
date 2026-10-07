@@ -4,13 +4,13 @@
   import Popup from "./Popup.svelte";
   import PageHeader from "./PageHeader.svelte";
   import { dictConfig } from "./dictConfig.svelte";
+  import { lookupDictionary as lookup, lookupKanji as redirectKanji } from "./sharingConfig.svelte";
   import { hotkeyConfig } from "./hotkeyConfig.svelte";
   import { readerConfig } from "./readerConfig.svelte";
   import { calculatePopupLayout, type PopupPlacement } from "./popupLayout";
   import { cursorExitHider } from "./popupHover";
   import type {
     FontInfo,
-    KanjiResponse,
     LookupEntry,
     LookupResponse,
     MineContent,
@@ -38,16 +38,6 @@
   let paneEl = $state<HTMLDivElement | null>(null);
   let lookupSeq = 0;
   const hider = cursorExitHider(closePopups);
-
-  function lookup(text: string): Promise<LookupResponse> {
-    return invoke<LookupResponse>("lookup", {
-      text,
-      maxResults: dictConfig.maxResults,
-      scanLength: dictConfig.scanLength,
-      frequencySortOrder: dictConfig.frequencySortOrder,
-      frequencySortDictionary: dictConfig.frequencySortDictionary,
-    });
-  }
 
   function placePopup(rect: SelectionRect): PopupPlacement {
     return calculatePopupLayout(
@@ -100,10 +90,6 @@
       clozeOffset = searchText.endsWith(text) ? searchText.length - text.length : null;
     }
     return response;
-  }
-
-  function redirectKanji(character: string): Promise<KanjiResponse | null> {
-    return invoke<KanjiResponse | null>("lookup_kanji", { character });
   }
 
   async function openPopup(

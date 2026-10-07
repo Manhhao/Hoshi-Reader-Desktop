@@ -71,6 +71,7 @@
   import SettingToggle from "./SettingToggle.svelte";
   import SettingRow from "./SettingRow.svelte";
   import SettingsSection from "./SettingsSection.svelte";
+  import SharingSettings from "./SharingSettings.svelte";
   import PageHeader from "./PageHeader.svelte";
 
   let {
@@ -793,6 +794,7 @@
       {:else if tab === "about"}
         <About />
       {:else if tab === "dictionaries"}
+        <SharingSettings onImport={refresh} />
         {#if updatableTitles.length > 0}
           <SettingsSection title="Updates">
             <SettingToggle
