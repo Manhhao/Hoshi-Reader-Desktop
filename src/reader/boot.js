@@ -47,6 +47,7 @@
   const scanModifier = params.get("mod");
   const scanDelay = Number(params.get("sdl"));
   const clickLookup = params.get("cl");
+  const auxLookupButton = { middle: 1, back: 3, forward: 4 }[clickLookup];
   const clickZone = Number(params.get("cz")) / 100;
   function clickEdge(x) {
     if (x < window.innerWidth * clickZone) return "left";
@@ -54,8 +55,11 @@
     return null;
   }
   const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
+  const scanButton = { "Mouse:Middle": 1, "Mouse:Right": 2, "Mouse:Back": 3, "Mouse:Forward": 4 }[scanModifier];
+  const scanButtonMask = [1, 4, 2, 8, 16][scanButton] ?? 0;
   let scanKeyHeld = false;
   function modifierHeld(e) {
+    if (scanButtonMask) return (e.buttons & scanButtonMask) !== 0;
     if (scanModifier === "Shift") return e.shiftKey;
     if (scanModifier === "Control") return e.ctrlKey;
     if (scanModifier === "Alt") return e.altKey;
@@ -364,6 +368,7 @@
   }
   document.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    if (scanButton === 2) return;
     const range = clickLookup === "right" ? secondaryRange : selectionRangeAt(e);
     if (!range) {
       if (clickLookup === "right") return;
@@ -403,7 +408,7 @@
       mouseButtons = e.buttons;
       lastMouse = { x: e.clientX, y: e.clientY };
       clearTimeout(scanTimer);
-      if (e.buttons) return;
+      if (e.buttons & ~scanButtonMask) return;
       if (!modifierHeld(e)) {
         if (!scanModifier) {
           scanTimer = setTimeout(() => {
@@ -458,20 +463,26 @@
   document.addEventListener("mousedown", (e) => {
     mouseButtons = e.buttons;
     clearTimeout(scanTimer);
+    if (e.button === scanButton) {
+      e.preventDefault();
+      if (window.hoshiParagraph.finishTextAnimation()) return;
+      window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
+      return;
+    }
     const token = mouseHotkeyTokens[e.button];
-    const middle = e.button === 1 && clickLookup === "middle";
-    if (token && token !== "Mouse:Right" && !middle && readerHotkeys.includes(token)) {
+    const aux = e.button === auxLookupButton;
+    if (token && token !== "Mouse:Right" && !aux && readerHotkeys.includes(token)) {
       e.preventDefault();
       parent.postMessage({ hoshi: "reader-hotkey", key: token }, "*");
       return;
     }
     const secondary = e.button === 2 || (mac && e.ctrlKey);
     secondaryRange = secondary ? selectionRangeAt(e) : null;
-    if (secondary ? clickLookup !== "right" || secondaryRange : e.button !== 0 && !middle) {
+    if (secondary ? clickLookup !== "right" || secondaryRange : e.button !== 0 && !aux) {
       if (!window.getSelection().isCollapsed) e.preventDefault();
       return;
     }
-    if (middle) e.preventDefault();
+    if (aux) e.preventDefault();
     secondaryLookup = secondary;
     mouseDownAt = { x: e.clientX, y: e.clientY };
     selectionDismissed = !window.getSelection().isCollapsed || !!window.hoshiSelection.selection;
@@ -484,17 +495,18 @@
     if (secondaryLookup) e.preventDefault();
   });
   document.addEventListener("mouseup", (e) => {
+    if (e.button === scanButton) return;
     secondaryLookup = false;
     if (e.button === 2 || (mac && e.ctrlKey)) {
       if (clickLookup === "right" && !secondaryRange) onClick(e, 2);
-    } else if (e.button === 0 || (e.button === 1 && clickLookup === "middle")) {
+    } else if (e.button === 0 || e.button === auxLookupButton) {
       onClick(e, e.button);
     }
     setTimeout(() => parent.postMessage({ hoshi: "release" }, "*"));
   });
   document.addEventListener("auxclick", (e) => {
     const token = mouseHotkeyTokens[e.button];
-    if (e.button === 1 && clickLookup === "middle") e.preventDefault();
+    if (e.button === scanButton || e.button === auxLookupButton) e.preventDefault();
     else if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
   });
   function onClick(e, button) {

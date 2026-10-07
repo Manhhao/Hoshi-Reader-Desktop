@@ -1,6 +1,6 @@
 import { persisted } from "./persisted.svelte";
 
-export type ClickLookup = "off" | "left" | "right" | "middle";
+export type ClickLookup = "off" | "left" | "right" | "middle" | "back" | "forward";
 
 export type HotkeyConfig = {
   scanModifier: string;
@@ -57,6 +57,13 @@ export const mouseButtonTokens: Record<number, string> = {
   2: "Mouse:Right",
   3: "Mouse:Back",
   4: "Mouse:Forward",
+};
+
+export const clickLookupTokens: Partial<Record<ClickLookup, string>> = {
+  middle: "Mouse:Middle",
+  right: "Mouse:Right",
+  back: "Mouse:Back",
+  forward: "Mouse:Forward",
 };
 
 const mouseButtonLabels: Record<string, string> = {

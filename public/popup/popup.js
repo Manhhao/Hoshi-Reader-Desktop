@@ -2152,7 +2152,7 @@ window.renderPopup = function() {
                 return;
             }
         }
-        if (button === { left: 0, middle: 1, right: 2 }[window.popupClickLookup] && isLookupTarget(target)) {
+        if (button === { left: 0, middle: 1, right: 2, back: 3, forward: 4 }[window.popupClickLookup] && isLookupTarget(target)) {
             lookupAt(e);
         }
     });

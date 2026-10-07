@@ -343,8 +343,20 @@
         return (key.length === 1 ? key.toLowerCase() : key) === mod;
       }
 
+      const scanButtons = { "Mouse:Middle": 1, "Mouse:Right": 2, "Mouse:Back": 3, "Mouse:Forward": 4 };
+
+      function isScanButton(e) {
+        return e.button === scanButtons[window.popupScanModifier];
+      }
+
+      function scanButtonMask() {
+        return [1, 4, 2, 8, 16][scanButtons[window.popupScanModifier]] ?? 0;
+      }
+
       function scanModifierHeld(e) {
         const mod = window.popupScanModifier ?? "Shift";
+        const mask = scanButtonMask();
+        if (mask) return (e.buttons & mask) !== 0;
         if (mod === "Shift") return e.shiftKey;
         if (mod === "Control") return e.ctrlKey;
         if (mod === "Alt") return e.altKey;
@@ -505,7 +517,7 @@
           popupMouseButtons = e.buttons;
           lastPopupMouse = { x: e.clientX, y: e.clientY, target: e.target };
           clearTimeout(scanTimer);
-          if (e.buttons) return;
+          if (e.buttons & ~scanButtonMask()) return;
           if (!scanModifierHeld(e)) {
             if (window.popupScanModifier === "") {
               scanTimer = setTimeout(scanAt, window.popupScanDelay, e.clientX, e.clientY, e.target);
@@ -530,6 +542,7 @@
         "mouseup",
         (e) => {
           popupMouseButtons = e.buttons;
+          if (isScanButton(e)) scannedSearchTextIndex = null;
         },
         true,
       );
@@ -568,14 +581,19 @@
         "mousedown",
         (e) => {
           popupMouseButtons = e.buttons;
-          if (e.button === 3 || e.button === 4) {
+          if (isScanButton(e)) {
+            e.preventDefault();
+            scanAt(e.clientX, e.clientY, e.target);
+            return;
+          }
+          const lookupButton = { right: 2, middle: 1, back: 3, forward: 4 }[window.popupClickLookup] ?? 0;
+          if ((e.button === 3 || e.button === 4) && e.button !== lookupButton) {
             e.preventDefault();
             if (e.button === 3) goBack();
             else goForward();
             return;
           }
-          const lookupButton = { right: 2, middle: 1 }[window.popupClickLookup] ?? 0;
-          if (e.button === 1 && lookupButton === 1) e.preventDefault();
+          if (e.button === lookupButton && [1, 3, 4].includes(e.button)) e.preventDefault();
           if ((e.button === 0 || e.button === lookupButton) && !e.target.closest?.(".button-slot")) {
             window.hoshiSelection?.clearSelection();
           }
@@ -584,7 +602,7 @@
         true,
       );
       document.addEventListener("auxclick", (e) => {
-        if (e.button === 3 || e.button === 4 || (e.button === 1 && window.popupClickLookup === "middle")) e.preventDefault();
+        if (isScanButton(e) || e.button === 3 || e.button === 4 || (e.button === 1 && window.popupClickLookup === "middle")) e.preventDefault();
       });
 
       let swipeDeltaX = 0;

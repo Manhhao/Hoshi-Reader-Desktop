@@ -53,6 +53,7 @@
     hotkeyConfig,
     hotkeyLabel,
     mouseButtonTokens,
+    clickLookupTokens,
     normalizeHotkey,
     readerHotkeys,
     saveHotkeyConfig,
@@ -193,29 +194,33 @@
   }
 
   function onBindMouse(e: MouseEvent) {
-    if (!bindingKey || bindingKey === "scanModifier" || e.button === 0) return;
+    if (!bindingKey || e.button === 0) return;
     const key = mouseButtonTokens[e.button];
     if (!key) return;
     e.preventDefault();
     e.stopPropagation();
-    if (
-      (key === "Mouse:Right" && hotkeyConfig.clickLookup === "right") ||
-      (key === "Mouse:Middle" && hotkeyConfig.clickLookup === "middle")
-    ) {
+    const usedByClickLookup = key === clickLookupTokens[hotkeyConfig.clickLookup];
+    if (usedByClickLookup && bindingKey !== "scanModifier") {
       bindingError = "Already used by Scan on Click.";
       return;
     }
-    const conflict = readerHotkeys.find(
+    const conflict = [{ key: "scanModifier" as const, label: "Scan Modifier" }, ...readerHotkeys].find(
       (binding) => binding.key !== bindingKey && hotkeyConfig[binding.key] === key,
     );
     if (conflict) {
       bindingError = `Already used by ${conflict.label}.`;
       return;
     }
+    if (usedByClickLookup) hotkeyConfig.clickLookup = "off";
     hotkeyConfig[bindingKey] = key;
     saveHotkeyConfig();
     bindingKey = null;
     bindingError = "";
+  }
+
+  function onClickLookupChange() {
+    if (hotkeyConfig.scanModifier === clickLookupTokens[hotkeyConfig.clickLookup]) hotkeyConfig.scanModifier = "Shift";
+    saveHotkeyConfig();
   }
 
   type DictionaryType = "term" | "frequency" | "pitch" | "kanji";
@@ -1327,12 +1332,14 @@
             <select
               class="select select-sm w-36"
               bind:value={hotkeyConfig.clickLookup}
-              onchange={saveHotkeyConfig}
+              onchange={onClickLookupChange}
             >
               <option value="off">Off</option>
               <option value="left">Left Click</option>
               <option value="right">Right Click</option>
               <option value="middle">Middle Click</option>
+              <option value="back">Back Button</option>
+              <option value="forward">Forward Button</option>
             </select>
           </SettingRow>
           <SettingToggle
