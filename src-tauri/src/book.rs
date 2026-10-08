@@ -285,6 +285,7 @@ fn inject_scripts(bytes: Vec<u8>) -> Vec<u8> {
 fn continuous_shell(app: &AppHandle, id: &str) -> Option<Vec<u8>> {
     const HEAD: &str = r#"<!doctype html><html><head><meta charset="utf-8"><style>:root{color-scheme:light dark}html{opacity:0;background:transparent!important}</style></head><body>"#;
     const TAGS: &str = concat!(
+        r#"<script src="/__hoshi/reader.js"></script>"#,
         r#"<script src="/__hoshi/scrollreader.js"></script>"#,
         r#"<script src="/__hoshi/selection.js"></script>"#,
         r#"<script src="/__hoshi/highlights.js"></script>"#,

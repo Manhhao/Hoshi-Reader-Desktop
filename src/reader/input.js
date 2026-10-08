@@ -4,6 +4,7 @@ window.hoshiInput = (function () {
     const blurImages = params.get('bi') === '1';
     const scanModifier = params.get('mod');
     const scanDelay = Number(params.get('sdl'));
+    const scanLength = Number(params.get('sl'));
     const clickLookup = params.get('cl');
     const auxLookupButton = { middle: 1, back: 3, forward: 4 }[clickLookup];
     const scanButton = {
@@ -38,7 +39,6 @@ window.hoshiInput = (function () {
     let selectionDismissed = false;
     let pressedSelection = null;
 
-    window.scanLength = Number(params.get('sl'));
     window.scanNonJapaneseText = params.get('snj') !== '0';
 
     function post(message) {
@@ -83,7 +83,7 @@ window.hoshiInput = (function () {
     }
 
     function selectText(x, y) {
-        return window.hoshiSelection.selectText(x, y, window.scanLength);
+        return window.hoshiSelection.selectText(x, y, scanLength);
     }
 
     function finishTextAnimation() {

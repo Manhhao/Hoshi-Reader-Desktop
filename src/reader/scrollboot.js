@@ -293,33 +293,23 @@
         }
     }
 
-    function applyCues(cues) {
-        if (!cues) {
-            return;
-        }
-
-        const bookCues = cues.flatMap((chapterCues, spine) => {
-            const section = reader.sections[spine];
-            return chapterCues.map(cue => ({ ...cue, start: cue.start + section.start }));
+    function toBookOffsets(chapters, field, sectionStart) {
+        return chapters.flatMap((items, spine) => {
+            const start = reader.sections[spine][sectionStart];
+            return items.map(item => ({ ...item, [field]: item[field] + start }));
         });
+    }
 
-        reader.applySasayakiCues(bookCues);
+    function applyCues(cues) {
+        if (cues) {
+            reader.applySasayakiCues(toBookOffsets(cues, 'start', 'start'));
+        }
     }
 
     function applyHighlights(highlights) {
-        if (!highlights) {
-            return;
+        if (highlights) {
+            window.hoshiHighlights.applyHighlights(toBookOffsets(highlights, 'offset', 'rawStart'));
         }
-
-        const bookHighlights = highlights.flatMap((chapterHighlights, spine) => {
-            const section = reader.sections[spine];
-            return chapterHighlights.map(highlight => ({
-                ...highlight,
-                offset: highlight.offset + section.rawStart
-            }));
-        });
-
-        window.hoshiHighlights.applyHighlights(bookHighlights);
     }
 
     function createHighlight(color, id) {

@@ -104,7 +104,7 @@
 
   const syncKey = $derived(folder.normalize("NFC"));
   const vertical = $derived(readerConfig.verticalWriting);
-  const continuous = $derived(readerConfig.continuousMode && !readerConfig.paragraphMode);
+  const continuous = $derived(readerConfig.continuousMode);
   const readerBg = $derived(readerBackground());
   const readerText = $derived(readerTextColor());
   const readerInfo = $derived(infoColor());
