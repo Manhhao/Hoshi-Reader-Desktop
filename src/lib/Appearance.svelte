@@ -434,7 +434,6 @@
     min={1}
     max={2.5}
     step={0.05}
-    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
   <SettingSlider
@@ -445,7 +444,6 @@
     min={-10}
     max={10}
     step={1}
-    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
   <SettingSlider
@@ -456,7 +454,6 @@
     min={0}
     max={3}
     step={0.1}
-    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
 {/snippet}
