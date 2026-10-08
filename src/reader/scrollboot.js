@@ -146,6 +146,7 @@
                 box-sizing: border-box !important;
                 ${scrollCss}
                 overflow-anchor: none !important;
+                transform: translate(0) !important;
                 scrollbar-width: none !important;
             }
             body::-webkit-scrollbar {
