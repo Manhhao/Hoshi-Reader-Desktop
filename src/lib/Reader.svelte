@@ -831,8 +831,7 @@
         stats.resetTrackingBaseline();
         if (frames[frames.length - 1].src !== blankSrc) {
           closePopups();
-          if (continuous) postToFrame({ hoshi: "restore", spine: index, progress });
-          else pushFrame();
+          pushFrame();
         }
       }
     }

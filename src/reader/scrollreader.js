@@ -13,11 +13,7 @@ Object.assign(window.hoshiReader, {
         const url = new URL(encodeURI(href), location.href);
         const response = await fetch(`${url}?shell=1`);
         const text = await response.text();
-
-        let doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
-        if (!doc.body || doc.querySelector('parsererror')) {
-            doc = new DOMParser().parseFromString(text, 'text/html');
-        }
+        const doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
 
         return { url, doc };
     },
@@ -31,16 +27,16 @@ Object.assign(window.hoshiReader, {
     resolveUrls(body, url) {
         const xlink = 'http://www.w3.org/1999/xlink';
 
-        body.querySelectorAll('[src], [href], [*|href]').forEach(el => {
+        body.querySelectorAll('[src], [*|href]').forEach(el => {
             for (const name of ['src', 'href']) {
                 const value = el.getAttribute(name);
-                if (value) {
+                if (value && URL.canParse(value, url)) {
                     el.setAttribute(name, new URL(value, url).href);
                 }
             }
 
             const linked = el.getAttributeNS(xlink, 'href');
-            if (linked) {
+            if (linked && URL.canParse(linked, url)) {
                 el.setAttributeNS(xlink, 'xlink:href', new URL(linked, url).href);
             }
         });

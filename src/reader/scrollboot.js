@@ -114,7 +114,6 @@
 
         style.textContent = `
             :root {
-                color-scheme: light dark;
                 ${contentSizeCss}
             }
             @media (prefers-color-scheme: light) {
@@ -128,7 +127,6 @@
                 }
             }
             html {
-                background: transparent !important;
                 -webkit-line-box-contain: block glyphs replaced;
             }
             html, body, hoshi-html, hoshi-body {
