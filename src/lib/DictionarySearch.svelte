@@ -1,9 +1,9 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { Search } from "@lucide/svelte";
+  import { ClipboardPaste, Search } from "@lucide/svelte";
   import Popup from "./Popup.svelte";
   import PageHeader from "./PageHeader.svelte";
-  import { dictConfig } from "./dictConfig.svelte";
+  import { dictConfig, saveDictConfig } from "./dictConfig.svelte";
   import { hotkeyConfig } from "./hotkeyConfig.svelte";
   import { readerConfig } from "./readerConfig.svelte";
   import { calculatePopupLayout, type PopupPlacement } from "./popupLayout";
@@ -26,6 +26,8 @@
     sentence: string;
     clozeOffset: number | null;
   };
+
+  let { active }: { active: boolean } = $props();
 
   let query = $state("");
   let searchText = $state("");
@@ -169,6 +171,27 @@
     invoke("anki_show_notes", { fields, slotIndex: Number(fields.slotIndex) || 0 });
   }
 
+  $effect(() => {
+    if (!active || !dictConfig.clipboardMonitor) return;
+    let stopped = false;
+    (async () => {
+      let since: number | null = null;
+      while (!stopped) {
+        const [count, text]: [number, string | null] = await invoke("clipboard_text", { since });
+        if (stopped) return;
+        since = count;
+        if (text?.trim()) {
+          query = text.trim();
+          runLookup();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  });
+
   invoke<FontInfo[]>("list_fonts").then((fonts) => (importedFonts = fonts));
 </script>
 
@@ -190,6 +213,17 @@
         }}
       />
     </label>
+    <button
+      class="btn btn-sm btn-square {dictConfig.clipboardMonitor ? 'btn-neutral' : 'btn-ghost'}"
+      title="Clipboard Monitor"
+      aria-pressed={dictConfig.clipboardMonitor}
+      onclick={() => {
+        dictConfig.clipboardMonitor = !dictConfig.clipboardMonitor;
+        saveDictConfig();
+      }}
+    >
+      <ClipboardPaste class="size-4" />
+    </button>
   </PageHeader>
 
   <div class="min-h-0 flex-1" bind:this={paneEl}>

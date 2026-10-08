@@ -317,7 +317,7 @@
         />
       {/if}
       <div class="absolute inset-0 {view === 'dictionary' ? '' : 'invisible'}" inert={view !== "dictionary"}>
-        <DictionarySearch />
+        <DictionarySearch active={view === "dictionary"} />
       </div>
     </main>
   </div>

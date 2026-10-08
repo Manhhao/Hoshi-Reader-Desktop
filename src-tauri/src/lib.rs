@@ -3,6 +3,7 @@ pub type Fallible<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 mod anki;
 mod backup;
 mod book;
+mod clipboard;
 mod crash;
 mod css;
 mod dict;
@@ -109,6 +110,7 @@ pub fn run() {
             highlights::load_highlights,
             highlights::save_highlights,
             ime::set_japanese_ime,
+            clipboard::clipboard_text,
             library::load_bookmark,
             library::load_pages,
             library::save_pages,

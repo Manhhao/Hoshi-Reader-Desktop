@@ -36,6 +36,7 @@ export type DictConfig = {
   compactPitchAccents: boolean;
   customCSS: string;
   searchTextSize: number;
+  clipboardMonitor: boolean;
 };
 
 const defaults: DictConfig = {
@@ -58,6 +59,7 @@ const defaults: DictConfig = {
   compactPitchAccents: true,
   customCSS: "",
   searchTextSize: 22,
+  clipboardMonitor: false,
 };
 
 const store = persisted<DictConfig>("dict.config", defaults);
