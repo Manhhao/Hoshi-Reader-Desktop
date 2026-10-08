@@ -12,6 +12,8 @@
     Bookmark as BookmarkIcon,
     Captions,
     ChartLine,
+    Check,
+    Copy,
     Download,
     FastForward,
     Highlighter,
@@ -738,6 +740,27 @@
   let galleryIndex = $state(0);
   let galleryViews = $state<ReturnType<typeof ZoomableImage>[]>([]);
   const galleryZoom = $derived(galleryViews[galleryIndex]?.getZoom() ?? 1);
+
+  let galleryCopied = $state(false);
+
+  async function copyGalleryImage() {
+    const index = Math.round(carouselEl!.scrollLeft / carouselEl!.clientWidth);
+    const png = fetch(displayedImages[index])
+      .then((response) => response.blob())
+      .then((blob) => createImageBitmap(blob))
+      .then((bitmap) => {
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+        return canvas.convertToBlob();
+      });
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      galleryCopied = true;
+      setTimeout(() => (galleryCopied = false), 1500);
+    } catch (error) {
+      await message(String(error), { title: "Error", kind: "error" });
+    }
+  }
 
   async function downloadGalleryImage() {
     const index = Math.round(carouselEl!.scrollLeft / carouselEl!.clientWidth);
@@ -1989,6 +2012,13 @@
             </button>
             <button class="btn btn-ghost btn-sm btn-square" onclick={downloadGalleryImage}>
               <Download class="size-4" />
+            </button>
+            <button class="btn btn-ghost btn-sm btn-square" onclick={copyGalleryImage}>
+              {#if galleryCopied}
+                <Check class="size-4" />
+              {:else}
+                <Copy class="size-4" />
+              {/if}
             </button>
           {/if}
           <form method="dialog">

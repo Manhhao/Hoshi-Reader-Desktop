@@ -205,6 +205,7 @@ pub fn book_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec
             };
             Response::builder()
                 .header(CONTENT_TYPE, mime)
+                .header("Access-Control-Allow-Origin", "*")
                 .body(bytes)
                 .unwrap()
         }
