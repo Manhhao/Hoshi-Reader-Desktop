@@ -23,12 +23,14 @@
     Minimize,
     Pause,
     Play,
+    Redo2,
     Rewind,
     RotateCcw,
     RotateCw,
     Search,
     Timer,
     TimerOff,
+    Undo2,
     Upload,
     Volume1,
     Volume2,
@@ -1039,6 +1041,38 @@
     stats.resetTrackingBaseline();
   }
 
+  let backHistory = $state<{ index: number; progress: number }[]>([]);
+  let forwardHistory = $state<{ index: number; progress: number }[]>([]);
+
+  function historyTarget(position?: { index: number; progress: number }) {
+    return position ? positionLabel(calculateCharacterProgress(position.index, position.progress), position.index) : null;
+  }
+  const backTarget = $derived(historyTarget(backHistory.at(-1)));
+  const forwardTarget = $derived(historyTarget(forwardHistory.at(-1)));
+
+  function recordPosition() {
+    backHistory.push({ index, progress });
+    forwardHistory = [];
+  }
+
+  function navigateBackwards() {
+    const target = backHistory.pop()!;
+    forwardHistory.push({ index, progress });
+    closePopups();
+    navigateTo(target.index, target.progress);
+  }
+
+  function navigateForwards() {
+    const target = forwardHistory.pop()!;
+    backHistory.push({ index, progress });
+    closePopups();
+    navigateTo(target.index, target.progress);
+  }
+
+  function clearForwardHistory() {
+    if (!backHistory.length) forwardHistory = [];
+  }
+
   let highlights = $state<BookHighlight[]>((() => savedHighlights)());
 
   $effect(() => {
@@ -1081,10 +1115,13 @@
 
   function jumpToCharacter(characterCount: number) {
     const position = resolveCharacterPosition(characterCount);
-    if (position) navigateTo(position.spineIndex, position.progress);
+    if (!position) return;
+    recordPosition();
+    navigateTo(position.spineIndex, position.progress);
   }
 
   function jumpToLink(spineIndex: number, fragment: string | null) {
+    recordPosition();
     if (spineIndex === index && fragment) {
       stats.flushStats();
       postToFrame({ hoshi: "fragment", spine: spineIndex, fragment });
@@ -1365,6 +1402,7 @@
         if (applyingBookmark || bookDeleted) break;
         index = m.spine;
         progress = m.frac;
+        clearForwardHistory();
         closePopups();
         break;
       case "progress":
@@ -1376,6 +1414,7 @@
         if (m.jump) {
           stats.resetTrackingBaseline();
         } else {
+          clearForwardHistory();
           stats.flushStats();
           if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking && !trackingStoppedManually) {
             stats.startTracking();
@@ -1383,6 +1422,7 @@
         }
         break;
       case "boundary":
+        clearForwardHistory();
         if (m.dir === "forward" && index < spine.length - 1) {
           pendingPagePlayback = true;
           progress = 0;
@@ -1640,8 +1680,34 @@
         </button>
       </div>
 
-      <div class="pointer-events-none absolute left-1/2 max-w-[calc(100%-26rem)] -translate-x-1/2 text-center">
-        <span class="block truncate text-sm font-semibold">{title}</span>
+      <div class="pointer-events-none absolute inset-x-0 flex items-center justify-center gap-2">
+        <div class="flex w-24 shrink-0 justify-end">
+          {#if backTarget !== null}
+            {#key backTarget}
+              <button
+                class="btn btn-ghost btn-sm pointer-events-auto gap-1 px-2 font-normal tabular-nums text-base-content/60"
+                onclick={navigateBackwards}
+              >
+                <Undo2 class="size-4" />
+                {backTarget}
+              </button>
+            {/key}
+          {/if}
+        </div>
+        <span class="block max-w-[calc(100%-39rem)] truncate text-sm font-semibold">{title}</span>
+        <div class="flex w-24 shrink-0">
+          {#if forwardTarget !== null}
+            {#key forwardTarget}
+              <button
+                class="btn btn-ghost btn-sm pointer-events-auto gap-1 px-2 font-normal tabular-nums text-base-content/60"
+                onclick={navigateForwards}
+              >
+                {forwardTarget}
+                <Redo2 class="size-4" />
+              </button>
+            {/key}
+          {/if}
+        </div>
       </div>
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
@@ -2215,6 +2281,7 @@
                 title={item.label}
                 onclick={() => {
                   closePopups();
+                  recordPosition();
                   navigateTo(item.spineIndex, 0, item.fragment);
                 }}
               >
