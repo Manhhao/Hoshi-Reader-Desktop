@@ -2,7 +2,6 @@
   const r = window.hoshiReader;
   const params = new URLSearchParams(location.search);
   const vertical = params.get("mode") === "vertical";
-  const chromium = navigator.userAgent.includes("Chrome/");
   const mac = navigator.userAgent.includes("Macintosh");
   let fontSize = Number(params.get("fs"));
   let horizontalPadding = Number(params.get("hp"));
@@ -10,19 +9,12 @@
   let maxWidth = Number(params.get("mw"));
   let maxHeight = Number(params.get("mh"));
   let justify = params.get("j") === "1";
-  let avoidBreak = params.get("apb") === "1";
   let advanced = params.get("adv") === "1";
   let lineHeight = Number(params.get("lh"));
   let charSpacing = Number(params.get("cs"));
   let paraSpacing = Number(params.get("ps"));
-  let spreadGap = Number(params.get("sp"));
   const furiganaMode = params.get("fm");
-  const paragraphMode = params.get("pm") === "1";
-  const maxSentencesPerPage = Number(params.get("spp"));
-  const splitDialogue = params.get("sd") === "1";
-  const pagesRun = params.get("pages");
-  let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
-  let clickAdvance = paragraphMode && params.get("ca") === "1";
+  const wheelDisabled = params.get("dw") === "1";
   const blurImages = params.get("bi") === "1";
   const fontName = params.get("font");
   const fontFile = params.get("ffile");
@@ -48,12 +40,6 @@
   const scanDelay = Number(params.get("sdl"));
   const clickLookup = params.get("cl");
   const auxLookupButton = { middle: 1, back: 3, forward: 4 }[clickLookup];
-  const clickZone = Number(params.get("cz")) / 100;
-  function clickEdge(x) {
-    if (x < window.innerWidth * clickZone) return "left";
-    if (x > window.innerWidth * (1 - clickZone)) return "right";
-    return null;
-  }
   const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
   const scanButton = { "Mouse:Middle": 1, "Mouse:Right": 2, "Mouse:Back": 3, "Mouse:Forward": 4 }[scanModifier];
   const scanButtonMask = [1, 4, 2, 8, 16][scanButton] ?? 0;
@@ -67,8 +53,9 @@
     return scanKeyHeld;
   }
 
-  let position = 0;
+  let position = { spine: 0, frac: 0 };
   let restored = false;
+  let moving = 0;
   let readerHotkeys = [];
   const mouseHotkeyTokens = { 1: "Mouse:Middle", 2: "Mouse:Right", 3: "Mouse:Back", 4: "Mouse:Forward" };
 
@@ -80,7 +67,6 @@
 
   const style = document.createElement("style");
   document.head.appendChild(style);
-  let spacers = [];
 
   function effectivePadding(padding, max, size) {
     if (!max || !size) return padding;
@@ -90,19 +76,8 @@
   function applyStyle() {
     const paddingX = effectivePadding(horizontalPadding, maxWidth, window.innerWidth);
     const paddingY = effectivePadding(verticalPadding, maxHeight, window.innerHeight);
-    const overlap = vertical && !chromium ? fontSize : 0;
-    const spread = spreadGap > 0;
-    const pages = spread ? 2 : 1;
-    const gap = spread ? `${spreadGap}px` : `${paddingX}vw`;
-    const side = spread ? `${spreadGap / 2}px` : `${paddingX / 2}vw`;
-    const pageWidth = spread ? `calc(50vw - ${spreadGap}px)` : `${100 - paddingX}vw`;
-    const imgWidth = `calc(${pageWidth} - 1px)`;
-    const imgHeight = vertical
-      ? `calc(${100 - paddingY}vh - ${(overlap * (100 - paddingY)) / 100}px)`
-      : `${100 - paddingY}vh`;
-    const columns = vertical && chromium
-      ? `column-width: 100vh !important; column-height: ${pageWidth} !important; column-wrap: wrap !important; row-gap: ${gap} !important; column-gap: 0 !important;`
-      : `-webkit-column-axis: horizontal !important; column-width: ${spread ? imgWidth : "100vw"} !important; column-gap: ${gap} !important;`;
+    const imgWidth = `calc(${100 - paddingX}vw - 1px)`;
+    const imgHeight = `${100 - paddingY}vh`;
     style.textContent = `
       :root { color-scheme: light dark; }
       :root { ${vertical ? `--hoshi-content-width: ${100 - paddingX}vw` : `--hoshi-content-height: ${100 - paddingY}vh`}; }
@@ -110,10 +85,7 @@
       @media (prefers-color-scheme: light) { :root { --hoshi-text-color: #000; } }
       @media (prefers-color-scheme: dark) { :root { --hoshi-text-color: #fff; } }
       html { -webkit-line-box-contain: block glyphs replaced; }
-      html, body {
-        overflow: hidden !important;
-        height: 100vh !important;
-        width: 100vw !important;
+      html, body, hoshi-html, hoshi-body {
         max-height: none !important;
         max-width: none !important;
         margin: 0 !important;
@@ -121,24 +93,36 @@
         color: var(--hoshi-text-color) !important;
         writing-mode: ${vertical ? "vertical-rl" : "horizontal-tb"} !important;
       }
-      body * {
-        column-count: auto !important;
-        -webkit-column-count: auto !important;
+      html, body {
+        overflow: hidden !important;
+        height: 100vh !important;
+        width: 100vw !important;
       }
       body {
         box-sizing: border-box !important;
-        ${columns}
-        column-fill: auto !important;
+        ${
+          vertical
+            ? `overflow-x: auto !important; width: ${100 - paddingX}vw !important; margin: 0 ${paddingX / 2}vw !important; padding: ${paddingY / 2}vh 0 !important;`
+            : `overflow-y: auto !important; height: ${100 - paddingY}vh !important; margin: ${paddingY / 2}vh 0 !important; padding: 0 ${paddingX / 2}vw !important;`
+        }
+        overflow-anchor: none !important;
+        scrollbar-width: none !important;
+      }
+      body::-webkit-scrollbar { display: none !important; }
+      hoshi-section { display: flow-root !important; }
+      hoshi-html, hoshi-body {
+        display: block !important;
+        height: auto !important;
+        width: auto !important;
+      }
+      hoshi-html { background: transparent !important; }
+      body, hoshi-body {
         -webkit-text-size-adjust: none !important;
         font-family: ${fontName ? `"${fontName}", ` : ""}"Hiragino Mincho ProN", "Yu Mincho", serif !important;
         ${justify ? "" : "text-align: start !important; hanging-punctuation: allow-end !important; line-break: strict !important;"}
         ${advanced ? `line-height: ${lineHeight} !important; letter-spacing: ${charSpacing / 100}em !important;` : ""}
-        padding: ${paddingY / 2}vh ${side} !important;
-        ${spread && vertical && !chromium ? `padding-left: calc(50vw + ${side}) !important;` : ""}
-        ${overlap ? `padding-bottom: calc(${paddingY / 2}vh + ${overlap}px) !important;` : ""}
         ${fontSize ? `font-size: ${fontSize}px !important;` : ""}
       }
-      ${avoidBreak ? "p { break-inside: avoid !important; -webkit-column-break-inside: avoid !important; }" : ""}
       ${
         advanced
           ? vertical
@@ -184,19 +168,15 @@
         height: auto !important;
         display: block !important;
         margin: auto !important;
-        break-inside: avoid !important;
-        -webkit-column-break-inside: avoid !important;
         object-fit: contain !important;
       }
       svg {
         max-width: ${imgWidth} !important;
         max-height: ${imgHeight} !important;
-        width: 100% !important;
-        height: 100% !important;
+        width: auto !important;
+        height: ${imgHeight} !important;
         display: block !important;
         margin: auto !important;
-        break-inside: avoid !important;
-        -webkit-column-break-inside: avoid !important;
       }
       .hoshi-highlight-yellow { background-color: rgba(239, 209, 56, 0.35) !important; }
       .hoshi-highlight-green { background-color: rgba(152, 220, 129, 0.35) !important; }
@@ -219,139 +199,11 @@
         color: var(--hoshi-sasayaki-text-color) !important;
         background-color: var(--hoshi-sasayaki-background-color) !important;
       }
-      ${
-        paragraphMode
-          ? `body { font-kerning: none !important; }
-      p.hoshi-paragraph {
-        margin-block-start: 0 !important;
-        break-before: column !important;
-        -webkit-column-break-before: always !important;
-      }
-      p.hoshi-sentence { text-indent: 0 !important; }
-      ::highlight(hoshi-animation) { color: transparent !important; }`
-          : ""
-      }
     `;
-
-    spacers.forEach((spacer) => spacer.remove());
-    spacers = [];
-    r.spacer = null;
-    r.pagesPerScreen = pages;
-    if (chromium && !spread) {
-      return;
-    }
-    for (let i = 0; i < pages; i++) {
-      const spacer = document.createElement("div");
-      spacer.style.cssText = vertical
-        ? "display:block;break-inside:avoid;width:100%"
-        : `display:block;break-inside:avoid;height:100%;width:${side}`;
-      document.body.appendChild(spacer);
-      spacers.push(spacer);
-    }
-    r.spacer = spacers[0];
-  }
-
-  function syncPageSize() {
-    const rect = document.documentElement.getBoundingClientRect();
-    r.pageWidth = rect.width || window.innerWidth;
-    r.pageHeight = rect.height || window.innerHeight;
-  }
-
-  function sized() {
-    syncPageSize();
-    return r.pageWidth > 0 && r.pageHeight > 0;
-  }
-
-  function whenSized() {
-    if (sized()) return Promise.resolve();
-    return new Promise((resolve) => {
-      const observer = new ResizeObserver(() => {
-        if (!sized()) return;
-        observer.disconnect();
-        clearTimeout(timer);
-        resolve();
-      });
-      observer.observe(document.documentElement);
-      const timer = setTimeout(() => {
-        observer.disconnect();
-        resolve();
-      }, 1500);
-    });
-  }
-
-  function nodeAtProgress(p) {
-    let total = 0;
-    let node;
-    let walker = r.createWalker();
-    while ((node = walker.nextNode())) total += r.countChars(node.textContent);
-    if (total <= 0) return null;
-    const target = Math.ceil(total * p);
-    let sum = 0;
-    walker = r.createWalker();
-    while ((node = walker.nextNode())) {
-      sum += r.countChars(node.textContent);
-      if (sum > target) return node;
-    }
-    return null;
-  }
-
-  function alignToNode(node) {
-    const ctx = r.getScrollContext();
-    if (ctx.pageSize <= 0 || !node) return;
-    const range = document.createRange();
-    range.setStart(node, 0);
-    range.setEnd(node, Math.min(1, node.textContent.length));
-    const rect = r.getRect(range);
-    const cur = Math.abs(ctx.scrollEl.scrollLeft);
-    const anchor =
-      (ctx.vertical ? r.pageWidth - (rect.left + rect.right) / 2 : (rect.left + rect.right) / 2) + cur;
-    const target = r.alignToPage(ctx, anchor);
-    window.lastPageScroll = target;
-    r.setScrollOffset(ctx, target);
-    showAnchorMarker(node);
-  }
-
-  function showAnchorMarker(node) {
-    if (!node) return;
-    let container = node;
-    if (container.parentElement) {
-      container = container.parentElement.closest("p") || container.parentElement;
-    }
-    const paraRange = document.createRange();
-    paraRange.selectNode(container);
-    const paraRect = paraRange.getBoundingClientRect();
-    const range = document.createRange();
-    range.setStart(node, 0);
-    range.setEnd(node, Math.min(1, node.textContent.length));
-    const rect = r.getRect(range);
-    if (!rect || (rect.width === 0 && rect.height === 0)) return;
-    const bodyStyle = window.getComputedStyle(document.body);
-    parent.postMessage(
-      {
-        hoshi: "marker",
-        x: vertical ? paraRect.right : paraRect.left,
-        y: (rect.top + rect.bottom) / 2,
-        inset: parseFloat(vertical ? bodyStyle.paddingTop : bodyStyle.paddingLeft) || 0,
-      },
-      "*",
-    );
-  }
-
-  function updateMarker() {
-    showAnchorMarker(nodeAtProgress(position));
   }
 
   applyStyle();
-  syncPageSize();
   r.registerCopyText();
-
-  if (furiganaMode === "Toggle") {
-    document.querySelectorAll("ruby").forEach((ruby) => {
-      if (ruby.querySelector("rt")) ruby.classList.add("furigana-hidden");
-    });
-  } else if (furiganaMode === "Hidden") {
-    document.querySelectorAll("rt").forEach((rt) => rt.remove());
-  }
 
   let highlightRange = null;
   let secondaryRange = null;
@@ -386,16 +238,15 @@
 
   window.webkit = {
     messageHandlers: {
-      restoreCompleted: {
-        postMessage: () => {
-          document.documentElement.style.transition = "opacity 200ms ease";
-          document.documentElement.style.opacity = "1";
-          animateText();
-          parent.postMessage({ hoshi: "positioned" }, "*");
+      textSelected: {
+        postMessage: (d) => {
+          const section = r.sectionOf(window.hoshiSelection.selection.startNode);
+          parent.postMessage(
+            { hoshi: "selected", ...d, spine: section.index, normalizedOffset: d.normalizedOffset - section.start },
+            "*",
+          );
         },
       },
-      textSelected: { postMessage: (d) => parent.postMessage({ hoshi: "selected", ...d }, "*") },
-      pageChanged: { postMessage: (page) => parent.postMessage({ hoshi: "page", page }, "*") },
     },
   };
 
@@ -412,13 +263,11 @@
       if (!modifierHeld(e)) {
         if (!scanModifier) {
           scanTimer = setTimeout(() => {
-            if (window.hoshiParagraph.animationFrame) return;
             window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
           }, scanDelay);
         }
         return;
       }
-      if (window.hoshiParagraph.finishTextAnimation()) return;
       window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
     },
     true,
@@ -429,7 +278,6 @@
       if (!isScanKey(e.key)) return;
       scanKeyHeld = true;
       if (e.repeat || !lastMouse || mouseButtons) return;
-      if (window.hoshiParagraph.finishTextAnimation()) return;
       window.hoshiSelection.selectText(lastMouse.x, lastMouse.y, window.scanLength);
     },
     true,
@@ -465,7 +313,6 @@
     clearTimeout(scanTimer);
     if (e.button === scanButton) {
       e.preventDefault();
-      if (window.hoshiParagraph.finishTextAnimation()) return;
       window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
       return;
     }
@@ -486,7 +333,6 @@
     secondaryLookup = secondary;
     mouseDownAt = { x: e.clientX, y: e.clientY };
     selectionDismissed = !window.getSelection().isCollapsed || !!window.hoshiSelection.selection;
-    if ((clickAdvance || clickEdge(e.clientX)) && e.detail > 1) e.preventDefault();
     pressedSelection = window.hoshiSelection.selection;
     window.hoshiSelection.clearSelection();
     parent.postMessage({ hoshi: "press" }, "*");
@@ -518,14 +364,13 @@
       return;
     }
     const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
-    if (window.hoshiParagraph.finishTextAnimation()) return;
     if (anchor) {
       parent.postMessage({ hoshi: "link", href: anchor.href }, "*");
       return;
     }
     const lookup = button !== 0 || clickLookup === "left";
     if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
-      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
+      parent.postMessage({ hoshi: "lookup-miss", dismissed: selectionDismissed }, "*");
       return;
     }
     const hit = pressedSelection && window.hoshiSelection.getCharacterAtPoint(e.clientX, e.clientY);
@@ -535,85 +380,91 @@
     }
     const selected = window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
     if (!selected && button === 0) {
-      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
+      parent.postMessage({ hoshi: "lookup-miss", dismissed: selectionDismissed }, "*");
     }
   }
   document.addEventListener("click", (e) => {
     if (e.target instanceof Element && e.target.closest("a[href]")) e.preventDefault();
   });
 
-  let resizeAnchor = null;
-  let resizeTimer = 0;
-  let lastPageWidth = 0;
-  let lastPageHeight = 0;
-
-  function handleViewportChange() {
-    if (!sized()) return;
-    if (r.pageWidth === lastPageWidth && r.pageHeight === lastPageHeight) return;
-    lastPageWidth = r.pageWidth;
-    lastPageHeight = r.pageHeight;
-    if (maxWidth || maxHeight) applyStyle();
-    layoutParagraphs();
-    if (!restored) return;
-    if (!resizeAnchor) resizeAnchor = nodeAtProgress(position);
-    alignToNode(resizeAnchor);
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => (resizeAnchor = null), 150);
+  function report(hoshi, jump) {
+    position = r.calculateProgress();
+    parent.postMessage({ hoshi, ...position, jump }, "*");
   }
 
-  window.addEventListener("resize", handleViewportChange);
-  new ResizeObserver(handleViewportChange).observe(document.documentElement);
+  async function settle(move) {
+    moving++;
+    await move?.();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    moving--;
+  }
+
+  function jumped() {
+    settle();
+    report("progress", true);
+  }
+
+  function positioned() {
+    document.documentElement.style.transition = "opacity 200ms ease";
+    document.documentElement.style.opacity = "1";
+    parent.postMessage({ hoshi: "positioned" }, "*");
+  }
+
+  function reflow() {
+    if (restored) settle(() => r.restoreProgress(position.spine, position.frac));
+  }
+
+  let scrollTimer = 0;
+  let scrollReported = 0;
+  document.body.addEventListener(
+    "scroll",
+    () => {
+      if (!restored || moving) return;
+      const now = performance.now();
+      if (now - scrollReported >= 50) {
+        scrollReported = now;
+        report("scroll");
+      }
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => report("progress"), 150);
+    },
+    { passive: true },
+  );
+
+  window.addEventListener("resize", () => {
+    if (maxWidth || maxHeight) applyStyle();
+    reflow();
+  });
 
   function applyCues(cues) {
     if (!cues) return;
-    r.applySasayakiCues(cues);
+    r.applySasayakiCues(
+      cues.flatMap((chapter, spine) =>
+        chapter.map((cue) => ({ ...cue, start: cue.start + r.sections[spine].start })),
+      ),
+    );
   }
 
-  function restyle(m) {
-    const anchor = nodeAtProgress(position);
-    fontSize = m.fs;
-    horizontalPadding = m.hp;
-    verticalPadding = m.vp;
-    maxWidth = m.mw;
-    maxHeight = m.mh;
-    justify = m.j;
-    avoidBreak = m.apb;
-    advanced = m.adv;
-    lineHeight = m.lh;
-    charSpacing = m.cs;
-    paraSpacing = m.ps;
-    spreadGap = m.sp;
-    applyStyle();
-    syncPageSize();
-    layoutParagraphs();
-    alignToNode(anchor);
-    if (restored) r.notifyPageChanged();
-  }
-
-  function layoutParagraphs() {
-    if (!paragraphMode) return;
-    window.hoshiParagraph.finishTextAnimation();
-    window.hoshiParagraph.layoutParagraphs();
-  }
-
-  function animateText() {
-    if (paragraphMode && textSpeed) window.hoshiParagraph.animateText(textSpeed);
+  function applyHighlights(highlights) {
+    if (!highlights) return;
+    window.hoshiHighlights.applyHighlights(
+      highlights.flatMap((chapter, spine) =>
+        chapter.map((highlight) => ({ ...highlight, offset: highlight.offset + r.sections[spine].rawStart })),
+      ),
+    );
   }
 
   function turn(dir) {
-    if (!sized()) return;
     window.hoshiHighlights.clearSearchHighlight();
-    window.hoshiParagraph.finishTextAnimation();
-    if (r.paginate(dir) === "limit") {
-      parent.postMessage({ hoshi: "boundary", dir }, "*");
-    } else {
-      if (dir === "forward") animateText();
-      position = r.calculateProgress();
-      updateMarker();
-      parent.postMessage({ hoshi: "progress", frac: position, dir }, "*");
-    }
+    const step = (vertical ? document.body.clientWidth : document.body.clientHeight) * 0.8 * (dir === "forward" ? 1 : -1);
+    document.body.scrollBy({ left: vertical ? -step : 0, top: vertical ? 0 : step, behavior: "smooth" });
   }
 
+  function wheel(dx, dy) {
+    if (!wheelDisabled) r.scrollBy(vertical && Math.abs(dx) > Math.abs(dy) ? -dx : dy);
+  }
+
+  const scrollKeys = { ArrowDown: "forward", PageDown: "forward", ArrowUp: "backward", PageUp: "backward" };
   window.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.isComposing || e.target.closest("input, textarea, select, [contenteditable]")) return;
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
@@ -626,30 +477,30 @@
       parent.postMessage({ hoshi: "escape" }, "*");
       return;
     }
-    if (!e.ctrlKey && !e.altKey && !e.metaKey) {
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const control = e.target.closest("button, a, [role='button'], summary");
-      if (readerHotkeys.includes(key) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
-        e.preventDefault();
-        parent.postMessage({ hoshi: "reader-hotkey", key, repeat: e.repeat }, "*");
-      }
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const control = e.target.closest("button, a, [role='button'], summary");
+    if (readerHotkeys.includes(key) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
+      e.preventDefault();
+      parent.postMessage({ hoshi: "reader-hotkey", key, repeat: e.repeat }, "*");
+      return;
+    }
+    const dir = e.key === " " ? (e.shiftKey ? "backward" : "forward") : scrollKeys[e.key];
+    if (dir) {
+      e.preventDefault();
+      turn(dir);
     }
   });
 
   window.addEventListener(
     "wheel",
     (e) => {
+      if (!vertical && !wheelDisabled) return;
       e.preventDefault();
-      parent.postMessage({ hoshi: "wheel", dx: e.deltaX, dy: e.deltaY }, "*");
+      wheel(e.deltaX, e.deltaY);
     },
     { passive: false },
   );
-
-  function commitProgress(value) {
-    position = value;
-    updateMarker();
-    parent.postMessage({ hoshi: "progress", frac: position, jump: true }, "*");
-  }
 
   window.addEventListener("message", (e) => {
     const m = e.data;
@@ -660,40 +511,60 @@
       case "turn":
         turn(m.dir);
         break;
+      case "wheel":
+        wheel(m.dx, m.dy);
+        break;
       case "restore":
-        position = m.progress;
         applyCues(m.cues);
-        if (m.highlights) window.hoshiHighlights.applyHighlights(m.highlights);
-        r.restoreProgress(m.progress).then(() => {
-          restored = true;
-          requestAnimationFrame(() => requestAnimationFrame(updateMarker));
-        });
+        applyHighlights(m.highlights);
+        restored = true;
+        position = { spine: m.spine, frac: m.progress };
+        settle(() => r.restoreProgress(m.spine, m.progress)).then(positioned);
         break;
       case "fragment":
         applyCues(m.cues);
-        if (m.highlights) window.hoshiHighlights.applyHighlights(m.highlights);
-        r.jumpToFragment(m.fragment).then(() => {
-          restored = true;
-          commitProgress(r.calculateProgress());
+        applyHighlights(m.highlights);
+        restored = true;
+        settle(() => r.jumpToFragment(m.spine, m.fragment)).then(() => {
+          report("progress", true);
+          positioned();
         });
         break;
       case "restyle":
-        restyle(m);
+        fontSize = m.fs;
+        horizontalPadding = m.hp;
+        verticalPadding = m.vp;
+        maxWidth = m.mw;
+        maxHeight = m.mh;
+        justify = m.j;
+        advanced = m.adv;
+        lineHeight = m.lh;
+        charSpacing = m.cs;
+        paraSpacing = m.ps;
+        applyStyle();
+        reflow();
         break;
       case "create-highlight": {
         const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(highlightRange);
+        const section = r.sectionOf(highlightRange.startContainer);
         highlightRange = null;
         const result = window.hoshiHighlights.createHighlight(m.color, m.id);
-        if (result) parent.postMessage({ hoshi: "highlight-created", id: m.id, color: m.color, result }, "*");
+        if (!result) break;
+        if (!result.id) {
+          result.spine = section.index;
+          result.start -= section.start;
+          result.offset -= section.rawStart;
+        }
+        parent.postMessage({ hoshi: "highlight-created", id: m.id, color: m.color, result }, "*");
         break;
       }
       case "remove-highlight":
         window.hoshiHighlights.removeHighlight(m.id);
         break;
       case "search-highlight":
-        window.hoshiHighlights.showSearchHighlight(m.offset, m.length);
+        window.hoshiHighlights.showSearchHighlight(m.offset + r.sections[m.spine].start, m.length);
         break;
       case "highlight":
         window.hoshiSelection.highlightSelection(m.count);
@@ -715,31 +586,19 @@
           m.background,
         );
         break;
-      case "sasayaki-highlight": {
-        const progress = r.highlightSasayakiCue(m.id, m.reveal);
-        if (typeof progress === "number") commitProgress(progress);
+      case "sasayaki-highlight":
+        if (r.highlightSasayakiCue(m.id, m.reveal)) jumped();
         break;
-      }
       case "sasayaki-clear":
         r.clearSasayakiCue();
         break;
       case "sasayaki-cues":
         applyCues(m.cues);
         break;
-      case "text-animation":
-        textSpeed = m.speed;
-        if (!textSpeed) window.hoshiParagraph.finishTextAnimation();
-        break;
-      case "click-advance":
-        clickAdvance = paragraphMode && m.enabled;
-        break;
-      case "page-cues":
-        parent.postMessage({ hoshi: "page-cues", ids: window.hoshiParagraph.pageSasayakiCues(), play: m.play }, "*");
-        break;
       case "sasayaki-image": {
-        const result = r.scrollToSasayakiImage(m.index);
-        if (typeof result?.progress === "number") commitProgress(result.progress);
-        parent.postMessage({ hoshi: "sasayaki-image-result", paused: result !== null }, "*");
+        const scrolled = r.scrollToSasayakiImage(m.spine, m.index);
+        if (scrolled) jumped();
+        parent.postMessage({ hoshi: "sasayaki-image-result", paused: scrolled !== null }, "*");
         break;
       }
     }
@@ -800,20 +659,19 @@
     return Promise.all(promises).then(() => new Promise((r) => setTimeout(r, 50)));
   }
 
-  setupImages()
-    .then(whenSized)
-    .then(() => paragraphMode && r.awaitFonts().then(() => {
-      if (maxSentencesPerPage > 0) window.hoshiParagraph.splitSentences(maxSentencesPerPage, splitDialogue);
-      layoutParagraphs();
-    }))
+  r.loadSections(window.hoshiSpine)
     .then(() => {
-      if (!pagesRun) {
-        parent.postMessage({ hoshi: "ready" }, "*");
-        return;
+      if (furiganaMode === "Toggle") {
+        document.querySelectorAll("ruby").forEach((ruby) => {
+          if (ruby.querySelector("rt")) ruby.classList.add("furigana-hidden");
+        });
+      } else if (furiganaMode === "Hidden") {
+        document.querySelectorAll("rt").forEach((rt) => rt.remove());
       }
-      r.awaitFonts().then(() => {
-        r.buildNodeOffsets();
-        parent.postMessage({ hoshi: "pages", run: pagesRun, starts: r.calculatePageStarts() }, "*");
-      });
+      return setupImages();
+    })
+    .then(() => {
+      r.measureSections();
+      parent.postMessage({ hoshi: "ready" }, "*");
     });
 })();

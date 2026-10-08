@@ -250,10 +250,7 @@
     label="Paragraph Mode"
     {compact}
     bind:checked={readerConfig.paragraphMode}
-    onchange={() => {
-      if (readerConfig.paragraphMode) readerConfig.continuousMode = false;
-      save(onReload);
-    }}
+    onchange={() => save(onReload)}
   />
   {#if readerConfig.paragraphMode}
     <SettingSlider

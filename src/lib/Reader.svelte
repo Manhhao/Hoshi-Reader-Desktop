@@ -212,11 +212,11 @@
     return schemeUrl(
       "book",
       `${id}/${href}?${layoutQuery(spread)}` +
-        `&cm=${continuous ? 1 : 0}&si=${index}&dw=${hotkeyConfig.disableReaderWheel ? 1 : 0}` +
+        `&dw=${hotkeyConfig.disableReaderWheel ? 1 : 0}` +
         `&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
-        `&sdl=${hotkeyConfig.scanDelay}&cz=${continuous ? 0 : hotkeyConfig.pageClickZone}` +
+        `&sdl=${hotkeyConfig.scanDelay}&cz=${hotkeyConfig.pageClickZone}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
         `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}`,
     );
@@ -230,11 +230,11 @@
             highlightCue: (cueId, reveal) =>
               postToFrame({ hoshi: "sasayaki-highlight", id: cueId, reveal }),
             clearCue: () => postToFrame({ hoshi: "sasayaki-clear" }),
-            scrollToImage: (imageIndex) =>
-              postToFrame({ hoshi: "sasayaki-image", spine: index, index: imageIndex }),
+            scrollToImage: (chapterIndex, imageIndex) =>
+              postToFrame({ hoshi: "sasayaki-image", spine: chapterIndex, index: imageIndex }),
           },
           (chapterIndex) => navigateTo(chapterIndex, sasayakiCueProgress(chapterIndex) ?? 0),
-          () => index,
+          (chapterIndex) => continuous || chapterIndex === index,
           {
             title,
             cover: cover ? schemeUrl("cover", id) : null,
@@ -831,12 +831,8 @@
         stats.resetTrackingBaseline();
         if (frames[frames.length - 1].src !== blankSrc) {
           closePopups();
-          if (continuous) {
-            loading = true;
-            postToFrame({ hoshi: "goto", spine: index, progress });
-          } else {
-            pushFrame();
-          }
+          if (continuous) postToFrame({ hoshi: "restore", spine: index, progress });
+          else pushFrame();
         }
       }
     }
@@ -862,13 +858,11 @@
   async function reloadSyncedMatch() {
     if (!sasayaki) return;
     await sasayaki.reloadMatch();
-    if (continuous) {
-      spine.forEach((_, spineIndex) => {
-        postToFrame({ hoshi: "sasayaki-cues", spine: spineIndex, cues: sasayaki.cues(spineIndex) });
-      });
-    } else {
-      postToFrame({ hoshi: "sasayaki-cues", spine: index, cues: sasayaki.cues(index) });
-    }
+    postToFrame({ hoshi: "sasayaki-cues", cues: frameCues(sasayaki) });
+  }
+
+  function frameCues(player: SasayakiPlayer) {
+    return continuous ? spine.map((_, spineIndex) => player.cues(spineIndex)) : player.cues(index);
   }
 
   $effect(() => {
@@ -980,33 +974,9 @@
     });
   }
 
-  let bookmarkTimer = 0;
-
-  function scheduleBookmark() {
-    clearTimeout(bookmarkTimer);
-    bookmarkTimer = window.setTimeout(() => {
-      bookmarkTimer = 0;
-      if (!bookDeleted) saveBookmark();
-    }, 400);
-  }
-
-  function flushBookmark() {
-    if (!bookmarkTimer) return;
-    clearTimeout(bookmarkTimer);
-    bookmarkTimer = 0;
-    if (!bookDeleted) saveBookmark();
-  }
-
-  $effect(() => () => flushBookmark());
-
-  $effect(() => {
-    postToFrame({ hoshi: "wheel-disabled", disabled: hotkeyConfig.disableReaderWheel });
-  });
-
   $effect(() => {
     const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
       if (isMac) event.preventDefault();
-      flushBookmark();
       await stats.stopTracking();
       if (isMac) onClose();
     });
@@ -1017,20 +987,15 @@
 
   function navigateTo(spineIndex: number, p: number, fragment: string | null = null) {
     stats.flushStats();
-    if (continuous && frames[frames.length - 1].src !== blankSrc) {
-      sasayaki?.prepareTransition();
+    if (continuous || (spineIndex === index && !fragment)) {
       index = spineIndex;
       progress = p;
       saveBookmark();
-      loading = true;
-      postToFrame({ hoshi: "goto", spine: spineIndex, progress: p, fragment });
-      stats.resetTrackingBaseline();
-      return;
-    }
-    if (spineIndex === index && !fragment) {
-      progress = p;
-      saveBookmark();
-      postToFrame({ hoshi: "restore", progress: p });
+      postToFrame(
+        fragment
+          ? { hoshi: "fragment", spine: spineIndex, fragment }
+          : { hoshi: "restore", spine: spineIndex, progress: p },
+      );
       stats.resetTrackingBaseline();
       return;
     }
@@ -1088,9 +1053,9 @@
   }
 
   function jumpToLink(spineIndex: number, fragment: string | null) {
-    if (spineIndex === index && fragment && !continuous) {
+    if (spineIndex === index && fragment) {
       stats.flushStats();
-      postToFrame({ hoshi: "fragment", fragment });
+      postToFrame({ hoshi: "fragment", spine: spineIndex, fragment });
       return;
     }
     navigateTo(spineIndex, 0, fragment);
@@ -1195,13 +1160,13 @@
 
   function onWheelInput(dx: number, dy: number) {
     if (hotkeyConfig.disableReaderWheel) return;
+    if (continuous) {
+      postToFrame({ hoshi: "wheel", dx, dy });
+      return;
+    }
     const now = performance.now();
     if (now - lastWheel < 50) return;
     lastWheel = now;
-    if (continuous) {
-      postToFrame({ hoshi: "wheel-scroll", dx, dy });
-      return;
-    }
     const forward = dx ? dx > 0 !== vertical : dy > 0;
     postTurn(forward ? "forward" : "backward");
   }
@@ -1320,19 +1285,10 @@
       case "ready": {
         if (spread) postRestyle();
         postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
-        if (continuous) {
-          postToFrame({ hoshi: "continuous-init", spine: $state.snapshot(spine) });
-          postToFrame({
-            hoshi: "continuous-data",
-            chapters: spine.map((_, spineIndex) => ({
-              spine: spineIndex,
-              cues: sasayaki?.hasMatch ? sasayaki.cues(spineIndex) : null,
-              highlights: $state.snapshot(chapterHighlights(spineIndex)),
-            })),
-          });
-        }
-        const cues = continuous || !sasayaki?.hasMatch ? null : sasayaki.cues(index);
-        const saved = continuous ? [] : $state.snapshot(chapterHighlights());
+        const cues = sasayaki?.hasMatch ? frameCues(sasayaki) : null;
+        const saved = continuous
+          ? spine.map((_, spineIndex) => $state.snapshot(chapterHighlights(spineIndex)))
+          : $state.snapshot(chapterHighlights());
         if (pendingFragment) {
           postToFrame({ hoshi: "fragment", spine: index, fragment: pendingFragment, cues, highlights: saved });
           pendingFragment = null;
@@ -1375,18 +1331,22 @@
       case "page":
         currentPage = m.page;
         break;
+      case "scroll":
+        if (applyingBookmark || bookDeleted) break;
+        index = m.spine;
+        progress = m.frac;
+        closePopups();
+        break;
       case "progress":
         if (applyingBookmark || bookDeleted) break;
-        if (typeof m.spine === "number") index = m.spine;
+        if (continuous) index = m.spine;
         progress = m.frac;
-        if (continuous) scheduleBookmark();
-        else saveBookmark();
+        saveBookmark();
         if (pageAdvance) postToFrame({ hoshi: "page-cues", play: m.jump ? null : m.dir === "forward" });
         if (m.jump) {
           stats.resetTrackingBaseline();
         } else {
-          if (continuous) closePopups();
-          else stats.flushStats();
+          stats.flushStats();
           if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking && !trackingStoppedManually) {
             stats.startTracking();
           }
