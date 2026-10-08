@@ -208,7 +208,7 @@
   }
 
   function frameSrc() {
-    const href = encodeURI(spine[index]);
+    const href = continuous ? "__continuous.html" : encodeURI(spine[index]);
     return schemeUrl(
       "book",
       `${id}/${href}?${layoutQuery(spread)}` +

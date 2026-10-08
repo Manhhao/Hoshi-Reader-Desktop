@@ -78,11 +78,13 @@
 
   if (fontName && fontFile) {
     const fontStyle = document.createElement("style");
+    fontStyle.dataset.hoshi = "";
     fontStyle.textContent = `@font-face { font-family: "${fontName}"; src: url("/__hoshi/Fonts/${encodeURIComponent(fontFile)}"); }`;
     document.head.appendChild(fontStyle);
   }
 
   const style = document.createElement("style");
+  style.dataset.hoshi = "";
   document.head.appendChild(style);
   let spacers = [];
 
@@ -599,7 +601,7 @@
   new ResizeObserver(handleViewportChange).observe(document.documentElement);
 
   function sectionRoot(spine) {
-    return continuous ? (hc.sections.get(spine ?? spineIndex)?.el ?? null) : undefined;
+    return continuous ? (hc.sections.get(spine ?? spineIndex)?.body ?? null) : undefined;
   }
 
   function applyCues(cues, spine) {
@@ -621,7 +623,7 @@
       const anchor = hc.last;
       if (!anchor) return;
       hc.vertical = r.isVertical();
-      hc.goTo(anchor.spine, anchor.frac, null, true).then(() => hc.report());
+      hc.reflow(anchor);
     }, 150);
   }
 

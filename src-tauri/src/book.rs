@@ -8,6 +8,16 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::library::{self, normalize_resource_key};
 
+const READER_STYLE: &str = r#"<style data-hoshi="">:root{color-scheme:light dark}html{opacity:0;background:transparent!important}html,body{overflow:hidden}</style>"#;
+const READER_SCRIPTS: &str = concat!(
+    r#"<script src="/__hoshi/reader.js"></script>"#,
+    r#"<script src="/__hoshi/selection.js"></script>"#,
+    r#"<script src="/__hoshi/highlights.js"></script>"#,
+    r#"<script src="/__hoshi/paragraph.js"></script>"#,
+);
+const CONTINUOUS_SCRIPT: &str = r#"<script src="/__hoshi/continuous.js"></script>"#;
+const BOOT_SCRIPT: &str = r#"<script src="/__hoshi/boot.js"></script>"#;
+
 #[derive(Default)]
 pub struct OpenBook(pub Mutex<Option<(String, Epub)>>);
 
@@ -124,12 +134,37 @@ pub fn load_contents(app: AppHandle, id: String) -> Result<BookDocument, String>
 
 #[tauri::command(async)]
 pub fn save_book_image(app: AppHandle, path: String, destination: String) -> Result<(), String> {
-    let (_, bytes) = serve_resource(&app, &path).ok_or("Image not found")?;
+    let (_, bytes) = serve_resource(&app, &path, false).ok_or("Image not found")?;
     std::fs::write(destination, bytes).map_err(|error| error.to_string())
 }
 
 pub fn book_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let path = request.uri().path();
+    let continuous = request.uri().query().and_then(|query| {
+        query
+            .split('&')
+            .find_map(|item| item.strip_prefix("continuous="))
+            .filter(|scope| {
+                scope.strip_prefix('s').is_some_and(|number| {
+                    !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+                })
+            })
+    });
+    let shell_resource = request
+        .uri()
+        .query()
+        .is_some_and(|query| query.split('&').any(|item| item == "shell=1"));
+
+    if path
+        .trim_start_matches('/')
+        .split_once('/')
+        .is_some_and(|(_, href)| href == "__continuous.html")
+    {
+        return Response::builder()
+            .header(CONTENT_TYPE, "text/html")
+            .body(continuous_shell())
+            .unwrap();
+    }
 
     if let Some(asset) = path.strip_prefix("/__hoshi/") {
         if let Some(file) = asset.strip_prefix("Fonts/") {
@@ -161,8 +196,15 @@ pub fn book_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec
             .unwrap();
     }
 
-    match serve_resource(app, path) {
+    match serve_resource(app, path, !shell_resource) {
         Some((mime, bytes)) => {
+            let bytes = match (continuous, mime.contains("css")) {
+                (Some(scope), true) => {
+                    crate::css::scope_continuous_css(&String::from_utf8_lossy(&bytes), scope)
+                        .into_bytes()
+                }
+                _ => bytes,
+            };
             let bytes = match library::thumb_size(&request) {
                 Some(max) if mime.starts_with("image/") => library::fit_image(bytes, max),
                 _ => bytes,
@@ -176,7 +218,7 @@ pub fn book_protocol(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec
     }
 }
 
-fn serve_resource(app: &AppHandle, path: &str) -> Option<(String, Vec<u8>)> {
+fn serve_resource(app: &AppHandle, path: &str, inject_reader: bool) -> Option<(String, Vec<u8>)> {
     let (id, href) = path.trim_start_matches('/').split_once('/')?;
     let href = urlencoding::decode(href).ok()?;
 
@@ -202,7 +244,7 @@ fn serve_resource(app: &AppHandle, path: &str) -> Option<(String, Vec<u8>)> {
     let mime = entry.kind().as_str().to_string();
     let bytes = entry.read_bytes().ok()?;
 
-    let bytes = if mime.contains("html") {
+    let bytes = if inject_reader && mime.contains("html") {
         inject_scripts(bytes)
     } else if mime.contains("css") {
         crate::css::sanitize_css(&String::from_utf8_lossy(&bytes)).into_bytes()
@@ -214,15 +256,7 @@ fn serve_resource(app: &AppHandle, path: &str) -> Option<(String, Vec<u8>)> {
 }
 
 fn inject_scripts(bytes: Vec<u8>) -> Vec<u8> {
-    const STYLE: &str = r#"<style data-hoshi="">:root{color-scheme:light dark}html{opacity:0;background:transparent!important}html,body{overflow:hidden}</style>"#;
-    const TAGS: &str = concat!(
-        r#"<script src="/__hoshi/reader.js"></script>"#,
-        r#"<script src="/__hoshi/selection.js"></script>"#,
-        r#"<script src="/__hoshi/highlights.js"></script>"#,
-        r#"<script src="/__hoshi/paragraph.js"></script>"#,
-        r#"<script src="/__hoshi/continuous.js"></script>"#,
-        r#"<script src="/__hoshi/boot.js"></script>"#,
-    );
+    let reader_tags = reader_tags(false);
     let mut html = String::from_utf8_lossy(&bytes).into_owned();
     let head_end = html
         .find("<head>")
@@ -232,16 +266,31 @@ fn inject_scripts(bytes: Vec<u8>) -> Vec<u8> {
                 .and_then(|pos| html[pos..].find('>').map(|end| pos + end + 1))
         });
     if let Some(pos) = head_end {
-        html.insert_str(pos, STYLE);
+        html.insert_str(pos, READER_STYLE);
     }
     let tags = if head_end.is_some() {
-        TAGS.to_string()
+        reader_tags
     } else {
-        format!("{STYLE}{TAGS}")
+        format!("{READER_STYLE}{reader_tags}")
     };
     match html.rfind("</body>") {
         Some(pos) => html.insert_str(pos, &tags),
         None => html.push_str(&tags),
     }
     html.into_bytes()
+}
+
+fn continuous_shell() -> Vec<u8> {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">{READER_STYLE}</head><body>{}</body></html>",
+        reader_tags(true)
+    )
+        .into_bytes()
+}
+
+fn reader_tags(continuous: bool) -> String {
+    format!(
+        "{READER_SCRIPTS}{}{BOOT_SCRIPT}",
+        if continuous { CONTINUOUS_SCRIPT } else { "" }
+    )
 }
