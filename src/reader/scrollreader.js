@@ -61,106 +61,141 @@ window.hoshiReader = {
         await document.fonts.ready;
     },
 
-    async loadSections(spine) {
-        const chapters = await Promise.all(spine.map(async href => {
-            const url = new URL(encodeURI(href), location.href);
-            const response = await fetch(`${url}?shell=1`);
-            const text = await response.text();
-            let doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
-            if (!doc.body || doc.querySelector('parsererror')) {
-                doc = new DOMParser().parseFromString(text, 'text/html');
-            }
-            return { url, doc };
-        }));
+    async loadChapter(href) {
+        const url = new URL(encodeURI(href), location.href);
+        const response = await fetch(`${url}?shell=1`);
+        const text = await response.text();
 
-        const tokens = new Map();
-        const loads = [];
-        const links = document.createDocumentFragment();
-        const content = document.createDocumentFragment();
+        let doc = new DOMParser().parseFromString(text, 'application/xhtml+xml');
+        if (!doc.body || doc.querySelector('parsererror')) {
+            doc = new DOMParser().parseFromString(text, 'text/html');
+        }
 
-        chapters.forEach(({ url, doc }, index) => {
-            const el = document.createElement('hoshi-section');
-            const html = document.createElement('hoshi-html');
-            const body = document.createElement('hoshi-body');
-            for (const attribute of doc.documentElement.attributes) {
-                html.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value);
-            }
-            for (const attribute of doc.body.attributes) {
-                body.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value);
-            }
-            html.classList.add('hoshi-root');
+        return { url, doc };
+    },
 
-            const styles = [];
-            doc.querySelectorAll('style, link[rel~="stylesheet" i]:not([rel~="alternate" i])').forEach(node => {
-                const source = node.localName === 'style'
-                    ? `${url}?css=${encodeURIComponent(node.textContent)}`
-                    : new URL(node.getAttribute('href'), url).href;
-                const media = node.getAttribute('media') || '';
-                const key = `${media}\n${source}`;
-                if (!tokens.has(key)) {
-                    tokens.set(key, `s${tokens.size}`);
-                    const link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.media = media;
-                    link.href = `${source}${source.includes('?') ? '&' : '?'}continuous=${tokens.get(key)}`;
-                    loads.push(new Promise(resolve => {
-                        link.onload = resolve;
-                        link.onerror = resolve;
-                    }));
-                    links.append(link);
+    copyAttributes(source, target) {
+        for (const attribute of source.attributes) {
+            target.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value);
+        }
+    },
+
+    resolveUrls(body, url) {
+        const xlink = 'http://www.w3.org/1999/xlink';
+
+        body.querySelectorAll('[src], [href], [*|href]').forEach(el => {
+            for (const name of ['src', 'href']) {
+                const value = el.getAttribute(name);
+                if (value) {
+                    el.setAttribute(name, new URL(value, url).href);
                 }
-                styles.push(tokens.get(key));
-                node.remove();
-            });
-            el.dataset.hoshiStyles = styles.join(' ');
+            }
 
-            doc.body.querySelectorAll('script').forEach(node => node.remove());
-            doc.body.querySelectorAll('[src], [href], [*|href]').forEach(node => {
-                for (const name of ['src', 'href']) {
-                    const value = node.getAttribute(name);
-                    if (value) {
-                        node.setAttribute(name, new URL(value, url).href);
-                    }
-                }
-                const linked = node.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-                if (linked) {
-                    node.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', new URL(linked, url).href);
-                }
-            });
+            const linked = el.getAttributeNS(xlink, 'href');
+            if (linked) {
+                el.setAttributeNS(xlink, 'xlink:href', new URL(linked, url).href);
+            }
+        });
+    },
 
-            body.append(...doc.body.childNodes);
-            html.append(body);
-            el.append(html);
-            content.append(el);
-            this.sections.push({ index, el, body, start: 0, rawStart: 0, total: 0 });
+    collectStyles(doc, url, sheets) {
+        const tokens = [];
+        const selector = 'style, link[rel~="stylesheet" i]:not([rel~="alternate" i])';
+
+        doc.querySelectorAll(selector).forEach(node => {
+            const media = node.getAttribute('media') || '';
+            const source = node.localName === 'style'
+                ? `${url}?css=${encodeURIComponent(node.textContent)}`
+                : new URL(node.getAttribute('href'), url).href;
+            const key = `${media}\n${source}`;
+
+            if (!sheets.has(key)) {
+                sheets.set(key, { token: `s${sheets.size}`, media, source });
+            }
+
+            tokens.push(sheets.get(key).token);
+            node.remove();
         });
 
-        document.head.prepend(links);
-        document.body.replaceChildren(content);
+        return tokens;
+    },
+
+    createStyleLink(sheet) {
+        const link = document.createElement('link');
+        const separator = sheet.source.includes('?') ? '&' : '?';
+
+        link.rel = 'stylesheet';
+        link.media = sheet.media;
+        link.href = `${sheet.source}${separator}continuous=${sheet.token}`;
+
+        return link;
+    },
+
+    createSection(index, chapter, sheets) {
+        const { url, doc } = chapter;
+        const el = document.createElement('hoshi-section');
+        const html = document.createElement('hoshi-html');
+        const body = document.createElement('hoshi-body');
+
+        this.copyAttributes(doc.documentElement, html);
+        this.copyAttributes(doc.body, body);
+        html.classList.add('hoshi-root');
+        el.dataset.hoshiStyles = this.collectStyles(doc, url, sheets).join(' ');
+
+        doc.body.querySelectorAll('script').forEach(node => node.remove());
+        this.resolveUrls(doc.body, url);
+
+        body.append(...doc.body.childNodes);
+        html.append(body);
+        el.append(html);
+
+        return { index, el, body, start: 0, rawStart: 0, total: 0 };
+    },
+
+    async loadSections(spine) {
+        const chapters = await Promise.all(spine.map(href => this.loadChapter(href)));
+        const sheets = new Map();
+
+        this.sections = chapters.map((chapter, index) => this.createSection(index, chapter, sheets));
+
+        const links = Array.from(sheets.values(), sheet => this.createStyleLink(sheet));
+        const loads = links.map(link => new Promise(resolve => {
+            link.onload = resolve;
+            link.onerror = resolve;
+        }));
+
+        document.head.prepend(...links);
+        document.body.replaceChildren(...this.sections.map(section => section.el));
         await Promise.all(loads);
     },
 
     measureSections() {
         let count = 0;
         let rawCount = 0;
+
         for (const section of this.sections) {
             const walker = this.createWalker(section.body);
             let node;
 
             section.start = count;
             section.rawStart = rawCount;
+
             while (node = walker.nextNode()) {
                 count += this.countChars(node.textContent);
                 rawCount += this.countRawChars(node.textContent);
             }
+
             section.total = count - section.start;
         }
+
         this.buildNodeOffsets();
     },
 
     sectionOf(node) {
-        const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node).closest('hoshi-section');
-        return this.sections.find(section => section.el === el);
+        const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        const sectionEl = el.closest('hoshi-section');
+
+        return this.sections.find(section => section.el === sectionEl);
     },
 
     getViewport() {
@@ -456,8 +491,13 @@ window.hoshiReader = {
         await this.awaitFonts();
         var section = this.sections[spine];
         var rawFragment = CSS.escape((fragment || '').trim());
-        var target = rawFragment && section.el.querySelector(`[id="${rawFragment}"], [name="${rawFragment}"]`);
+        var target = section.el;
 
-        this.scrollBy(this.getViewport().start(this.getRect(target || section.el)));
+        if (rawFragment) {
+            var selector = `[id="${rawFragment}"], [name="${rawFragment}"]`;
+            target = section.el.querySelector(selector) || section.el;
+        }
+
+        this.scrollBy(this.getViewport().start(this.getRect(target)));
     }
 };

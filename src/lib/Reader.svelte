@@ -862,7 +862,17 @@
   }
 
   function frameCues(player: SasayakiPlayer) {
-    return continuous ? spine.map((_, spineIndex) => player.cues(spineIndex)) : player.cues(index);
+    if (continuous) {
+      return spine.map((_, spineIndex) => player.cues(spineIndex));
+    }
+    return player.cues(index);
+  }
+
+  function frameHighlights() {
+    if (continuous) {
+      return spine.map((_, spineIndex) => $state.snapshot(chapterHighlights(spineIndex)));
+    }
+    return $state.snapshot(chapterHighlights());
   }
 
   $effect(() => {
@@ -1286,9 +1296,7 @@
         if (spread) postRestyle();
         postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
         const cues = sasayaki?.hasMatch ? frameCues(sasayaki) : null;
-        const saved = continuous
-          ? spine.map((_, spineIndex) => $state.snapshot(chapterHighlights(spineIndex)))
-          : $state.snapshot(chapterHighlights());
+        const saved = frameHighlights();
         if (pendingFragment) {
           postToFrame({ hoshi: "fragment", spine: index, fragment: pendingFragment, cues, highlights: saved });
           pendingFragment = null;
