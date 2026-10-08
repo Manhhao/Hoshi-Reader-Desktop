@@ -3,6 +3,7 @@
   import { ask, open } from "@tauri-apps/plugin-dialog";
   import { Plus, Trash2 } from "@lucide/svelte";
   import { defaultFonts, readerConfig, saveReaderConfig } from "./readerConfig.svelte";
+  import type { ProgressCount } from "./readerConfig.svelte";
   import SettingGroup from "./SettingGroup.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingRow from "./SettingRow.svelte";
@@ -25,6 +26,9 @@
   const minHeight = 200 + ((screenHeight - 200) % 50);
 
   let tab = $state<"Layout" | "Display" | "Popup">("Layout");
+  const progressCounts = $derived<ProgressCount[]>(
+    readerConfig.continuousMode ? ["Off", "Characters"] : ["Off", "Characters", "Pages"],
+  );
 
   function save(update?: () => void) {
     saveReaderConfig();
@@ -329,7 +333,7 @@
 {/snippet}
 
 {#snippet continuous()}
-  <SettingRow label="Reading Mode" {compact}>
+  <SettingRow label="Mode" {compact}>
     <div class="join">
       {#each [["Paginated", false], ["Continuous", true]] as const as [label, value] (label)}
         <button
@@ -433,6 +437,7 @@
     min={1}
     max={2.5}
     step={0.05}
+    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
   <SettingSlider
@@ -443,6 +448,7 @@
     min={-10}
     max={10}
     step={1}
+    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
   <SettingSlider
@@ -453,6 +459,7 @@
     min={0}
     max={3}
     step={0.1}
+    commit={readerConfig.continuousMode}
     onchange={() => save(onRestyle)}
   />
 {/snippet}
@@ -473,7 +480,7 @@
   {#if readerConfig.showProgress || readerConfig.showChapterProgress || (readerConfig.spreadLayout && readerConfig.spreadTopProgress)}
     <SettingRow label="Count" {compact}>
       <div class="join">
-        {#each ["Off", "Characters", "Pages"] as const as count (count)}
+        {#each progressCounts as count (count)}
           <button
             class="btn join-item btn-sm {readerConfig.progressCount === count ? 'btn-active' : ''}"
             onclick={() => {

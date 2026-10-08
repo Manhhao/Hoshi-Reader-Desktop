@@ -216,7 +216,7 @@
         `&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
-        `&sdl=${hotkeyConfig.scanDelay}&cz=${hotkeyConfig.pageClickZone}` +
+        `&sdl=${hotkeyConfig.scanDelay}&cz=${continuous ? 0 : hotkeyConfig.pageClickZone}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
         `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}`,
     );
@@ -341,7 +341,7 @@
   let spineFirstPages = $state.raw<number[]>([]);
   let currentPage = $state<number | null>(null);
 
-  const showPages = $derived(readerConfig.progressCount === "Pages");
+  const showPages = $derived(!continuous && readerConfig.progressCount === "Pages");
   const topProgress = $derived(spreadMode && readerConfig.spreadTopProgress);
   const measuresPages = $derived(showPages || (topProgress && readerConfig.progressCount === "Characters"));
   const layout = $derived(`${layoutQuery(spreadMode)}&w=${frameWidth}&h=${frameHeight}`);
