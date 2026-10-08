@@ -144,6 +144,10 @@
       ruby.furigana-hidden {
         cursor: pointer;
       }
+      html.edge,
+      html.edge * {
+        cursor: pointer !important;
+      }
       ruby.furigana-hidden > rt {
         color: transparent !important;
         background-image: linear-gradient(rgba(150, 150, 150, 0.75), rgba(150, 150, 150, 0.75)) !important;

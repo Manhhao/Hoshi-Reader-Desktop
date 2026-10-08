@@ -132,6 +132,7 @@ window.hoshiInput = (function () {
     function onMouseMove(e) {
         mouseButtons = e.buttons;
         lastMouse = { x: e.clientX, y: e.clientY };
+        document.documentElement.classList.toggle('edge', !!clickEdge(e.clientX));
         clearTimeout(scanTimer);
         if (e.buttons & ~scanButtonMask) {
             return;
@@ -156,6 +157,7 @@ window.hoshiInput = (function () {
 
     function onMouseLeave() {
         lastMouse = null;
+        document.documentElement.classList.remove('edge');
         clearTimeout(scanTimer);
     }
 
