@@ -1401,6 +1401,7 @@
       statsDialog.close();
       return true;
     }
+    if (document.querySelector("dialog[open]")) return false;
     if (popups.length) {
       closePopups(popups.length - 1);
       return true;

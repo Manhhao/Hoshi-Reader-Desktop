@@ -625,21 +625,30 @@
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>
 {/if}
 
-<dialog class="modal" bind:this={themeDialog}>
-  <form method="dialog" class="modal-box" onsubmit={createTheme}>
-    <h3 class="mb-4 text-base font-semibold">New Theme</h3>
-    <input
-      class="input w-full"
-      placeholder="Theme name"
-      bind:value={themeName}
-      required
-    />
-    <div class="modal-action">
-      <button type="button" class="btn btn-sm" onclick={() => themeDialog?.close()}>Cancel</button>
-      <button class="btn btn-neutral btn-sm">Create</button>
-    </div>
-  </form>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
+<div hidden>
+  <dialog
+    class="modal"
+    bind:this={themeDialog}
+    {@attach (node) => {
+      document.body.append(node);
+      return () => node.remove();
+    }}
+  >
+    <form method="dialog" class="modal-box" onsubmit={createTheme}>
+      <h3 class="mb-4 text-base font-semibold">New Theme</h3>
+      <input
+        class="input w-full"
+        placeholder="Theme name"
+        bind:value={themeName}
+        required
+      />
+      <div class="modal-action">
+        <button type="button" class="btn btn-sm" onclick={() => themeDialog?.close()}>Cancel</button>
+        <button class="btn btn-neutral btn-sm">Create</button>
+      </div>
+    </form>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+</div>
