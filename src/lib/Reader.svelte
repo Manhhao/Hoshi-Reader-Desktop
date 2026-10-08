@@ -831,7 +831,12 @@
         stats.resetTrackingBaseline();
         if (frames[frames.length - 1].src !== blankSrc) {
           closePopups();
-          pushFrame();
+          if (continuous) {
+            loading = true;
+            postToFrame({ hoshi: "goto", spine: index, progress });
+          } else {
+            pushFrame();
+          }
         }
       }
     }
@@ -857,7 +862,13 @@
   async function reloadSyncedMatch() {
     if (!sasayaki) return;
     await sasayaki.reloadMatch();
-    postToFrame({ hoshi: "sasayaki-cues", spine: index, cues: sasayaki.cues(index) });
+    if (continuous) {
+      spine.forEach((_, spineIndex) => {
+        postToFrame({ hoshi: "sasayaki-cues", spine: spineIndex, cues: sasayaki.cues(spineIndex) });
+      });
+    } else {
+      postToFrame({ hoshi: "sasayaki-cues", spine: index, cues: sasayaki.cues(index) });
+    }
   }
 
   $effect(() => {
@@ -1309,14 +1320,24 @@
       case "ready": {
         if (spread) postRestyle();
         postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
-        if (continuous) postToFrame({ hoshi: "continuous-init", spine: $state.snapshot(spine) });
-        const cues = sasayaki?.hasMatch ? sasayaki.cues(index) : null;
-        const saved = $state.snapshot(chapterHighlights());
+        if (continuous) {
+          postToFrame({ hoshi: "continuous-init", spine: $state.snapshot(spine) });
+          postToFrame({
+            hoshi: "continuous-data",
+            chapters: spine.map((_, spineIndex) => ({
+              spine: spineIndex,
+              cues: sasayaki?.hasMatch ? sasayaki.cues(spineIndex) : null,
+              highlights: $state.snapshot(chapterHighlights(spineIndex)),
+            })),
+          });
+        }
+        const cues = continuous || !sasayaki?.hasMatch ? null : sasayaki.cues(index);
+        const saved = continuous ? [] : $state.snapshot(chapterHighlights());
         if (pendingFragment) {
-          postToFrame({ hoshi: "fragment", fragment: pendingFragment, cues, highlights: saved });
+          postToFrame({ hoshi: "fragment", spine: index, fragment: pendingFragment, cues, highlights: saved });
           pendingFragment = null;
         } else {
-          postToFrame({ hoshi: "restore", progress, cues, highlights: saved });
+          postToFrame({ hoshi: "restore", spine: index, progress, cues, highlights: saved });
         }
         break;
       }
@@ -1372,7 +1393,8 @@
         if (m.jump) {
           stats.resetTrackingBaseline();
         } else {
-          stats.flushStats();
+          if (continuous) closePopups();
+          else stats.flushStats();
           if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking && !trackingStoppedManually) {
             stats.startTracking();
           }

@@ -242,9 +242,13 @@
       body::-webkit-scrollbar { display: none !important; }
       hoshi-section {
         display: flow-root !important;
-        writing-mode: inherit !important;
         margin: 0 !important;
         padding: 0 !important;
+      }
+      hoshi-section,
+      .hoshi-html,
+      .hoshi-body {
+        writing-mode: inherit !important;
       }`
           : ""
       }
@@ -588,7 +592,7 @@
     layoutParagraphs();
     if (!restored) return;
     if (continuous) {
-      rebuildContinuous();
+      reflowContinuous();
       return;
     }
     if (!resizeAnchor) resizeAnchor = nodeAtProgress(position);
@@ -617,7 +621,7 @@
     window.hoshiHighlights.applyHighlights(highlights, root);
   }
 
-  function rebuildContinuous() {
+  function reflowContinuous() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const anchor = hc.last;
@@ -644,7 +648,7 @@
     applyStyle();
     syncPageSize();
     if (continuous) {
-      rebuildContinuous();
+      reflowContinuous();
       return;
     }
     layoutParagraphs();
@@ -721,11 +725,14 @@
   window.addEventListener(
     "wheel",
     (e) => {
-      e.preventDefault();
       if (continuous) {
-        if (!wheelDisabled) hc.scrollBy(e.deltaX, e.deltaY);
+        if (vertical || wheelDisabled) {
+          e.preventDefault();
+          if (!wheelDisabled) hc.scrollBy(e.deltaX, e.deltaY);
+        }
         return;
       }
+      e.preventDefault();
       parent.postMessage({ hoshi: "wheel", dx: e.deltaX, dy: e.deltaY }, "*");
     },
     { passive: false },
@@ -759,6 +766,7 @@
       case "goto":
         hc.goTo(m.spine, m.progress, m.fragment).then(() => {
           restored = true;
+          hc.reporting = true;
           hc.report(true);
           r.notifyRestoreComplete();
         });
@@ -774,8 +782,10 @@
         applyCues(m.cues);
         if (m.highlights) applyHighlights(m.highlights);
         if (continuous) {
-          hc.goTo(spineIndex, m.progress).then(() => {
+          hc.goTo(m.spine ?? spineIndex, m.progress).then(() => {
             restored = true;
+            hc.reporting = true;
+            hc.report(true);
             r.notifyRestoreComplete();
           });
           break;
@@ -789,8 +799,9 @@
         applyCues(m.cues);
         if (m.highlights) applyHighlights(m.highlights);
         if (continuous) {
-          hc.goTo(spineIndex, 0, m.fragment).then(() => {
+          hc.goTo(m.spine ?? spineIndex, 0, m.fragment).then(() => {
             restored = true;
+            hc.reporting = true;
             hc.report(true);
             r.notifyRestoreComplete();
           });
