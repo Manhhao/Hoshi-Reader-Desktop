@@ -59,7 +59,7 @@ class CueTimeline {
 type Bridge = {
   highlightCue: (id: string, reveal: boolean) => void;
   clearCue: () => void;
-  scrollToImage: (index: number) => void;
+  scrollToImage: (chapterIndex: number, index: number) => void;
 };
 
 type NowPlaying = {
@@ -120,7 +120,7 @@ export class SasayakiPlayer {
     private id: string,
     private bridge: Bridge,
     private loadChapter: (index: number) => void,
-    private getCurrentIndex: () => number,
+    private isLoaded: (chapterIndex: number) => boolean,
     private nowPlaying: NowPlaying,
   ) {
     document.addEventListener("visibilitychange", this.onVisibilityChange);
@@ -629,8 +629,7 @@ export class SasayakiPlayer {
       }
     }
 
-    const currentIndex = this.getCurrentIndex();
-    if (cue.chapterIndex === currentIndex) {
+    if (this.isLoaded(cue.chapterIndex)) {
       this.displayCue(cue, this.autoScroll && this.hasPlayedOnce);
     } else if (this.autoScroll && this.hasPlayedOnce) {
       this.currentCue = cue;
@@ -667,7 +666,7 @@ export class SasayakiPlayer {
     this.pausedOnImage = true;
     this.imageResumeCue = resume;
     this.pausePlayback();
-    if (image.chapterIndex === this.getCurrentIndex()) {
+    if (this.isLoaded(image.chapterIndex)) {
       this.scrollAndPause(image);
     } else {
       this.pendingImage = image;
@@ -676,7 +675,7 @@ export class SasayakiPlayer {
   }
 
   private scrollAndPause(image: SasayakiImage) {
-    this.bridge.scrollToImage(image.imageIndex);
+    this.bridge.scrollToImage(image.chapterIndex, image.imageIndex);
   }
 
   private finishImagePause() {
@@ -690,7 +689,7 @@ export class SasayakiPlayer {
       return;
     }
     this.imageResumeCue = null;
-    if (resume.chapterIndex === this.getCurrentIndex()) {
+    if (this.isLoaded(resume.chapterIndex)) {
       this.displayCue(resume, this.autoScroll && this.hasPlayedOnce);
       this.startPlayback();
     } else {

@@ -30,6 +30,7 @@ export type ReaderConfig = {
   paragraphMode: boolean;
   maxSentencesPerPage: number;
   splitDialogue: boolean;
+  continuousMode: boolean;
   textAnimation: boolean;
   textSpeed: number;
   clickToAdvance: boolean;
@@ -82,6 +83,7 @@ const defaults: ReaderConfig = {
   paragraphMode: false,
   maxSentencesPerPage: 0,
   splitDialogue: false,
+  continuousMode: false,
   textAnimation: false,
   textSpeed: 35,
   clickToAdvance: true,

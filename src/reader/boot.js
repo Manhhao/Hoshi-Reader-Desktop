@@ -1,9 +1,9 @@
 (function () {
   const r = window.hoshiReader;
+  const input = window.hoshiInput;
   const params = new URLSearchParams(location.search);
   const vertical = params.get("mode") === "vertical";
   const chromium = navigator.userAgent.includes("Chrome/");
-  const mac = navigator.userAgent.includes("Macintosh");
   let fontSize = Number(params.get("fs"));
   let horizontalPadding = Number(params.get("hp"));
   let verticalPadding = Number(params.get("vp"));
@@ -22,8 +22,7 @@
   const splitDialogue = params.get("sd") === "1";
   const pagesRun = params.get("pages");
   let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
-  let clickAdvance = paragraphMode && params.get("ca") === "1";
-  const blurImages = params.get("bi") === "1";
+  input.clickAdvance = paragraphMode && params.get("ca") === "1";
   const fontName = params.get("font");
   const fontFile = params.get("ffile");
   const sasayakiTextColor = params.get("stc");
@@ -42,35 +41,10 @@
     document.documentElement.style.setProperty("--hoshi-text-color", "#" + textColor);
   }
 
-  window.scanLength = Number(params.get("sl"));
-  window.scanNonJapaneseText = params.get("snj") !== "0";
-  const scanModifier = params.get("mod");
-  const scanDelay = Number(params.get("sdl"));
-  const clickLookup = params.get("cl");
-  const auxLookupButton = { middle: 1, back: 3, forward: 4 }[clickLookup];
-  const clickZone = Number(params.get("cz")) / 100;
-  function clickEdge(x) {
-    if (x < window.innerWidth * clickZone) return "left";
-    if (x > window.innerWidth * (1 - clickZone)) return "right";
-    return null;
-  }
-  const isScanKey = (key) => (key.length === 1 ? key.toLowerCase() : key) === scanModifier;
-  const scanButton = { "Mouse:Middle": 1, "Mouse:Right": 2, "Mouse:Back": 3, "Mouse:Forward": 4 }[scanModifier];
-  const scanButtonMask = [1, 4, 2, 8, 16][scanButton] ?? 0;
-  let scanKeyHeld = false;
-  function modifierHeld(e) {
-    if (scanButtonMask) return (e.buttons & scanButtonMask) !== 0;
-    if (scanModifier === "Shift") return e.shiftKey;
-    if (scanModifier === "Control") return e.ctrlKey;
-    if (scanModifier === "Alt") return e.altKey;
-    if (scanModifier === "Meta") return e.metaKey;
-    return scanKeyHeld;
-  }
+  input.clickZone = Number(params.get("cz")) / 100;
 
   let position = 0;
   let restored = false;
-  let readerHotkeys = [];
-  const mouseHotkeyTokens = { 1: "Mouse:Middle", 2: "Mouse:Right", 3: "Mouse:Back", 4: "Mouse:Forward" };
 
   if (fontName && fontFile) {
     const fontStyle = document.createElement("style");
@@ -353,37 +327,6 @@
     document.querySelectorAll("rt").forEach((rt) => rt.remove());
   }
 
-  let highlightRange = null;
-  let secondaryRange = null;
-  function selectionRangeAt(e) {
-    const selection = window.getSelection();
-    const range = selection && !selection.isCollapsed && !window.hoshiSelection.selection
-      ? selection.getRangeAt(0)
-      : null;
-    const onSelection = range && [...range.getClientRects()].some((rect) =>
-      e.clientX >= rect.left - 4 && e.clientX <= rect.right + 4 &&
-      e.clientY >= rect.top - 4 && e.clientY <= rect.bottom + 4,
-    );
-    return onSelection ? range : null;
-  }
-  document.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    if (scanButton === 2) return;
-    const range = clickLookup === "right" ? secondaryRange : selectionRangeAt(e);
-    if (!range) {
-      if (clickLookup === "right") return;
-      window.hoshiSelection.clearSelection();
-      if (readerHotkeys.includes("Mouse:Right")) {
-        parent.postMessage({ hoshi: "reader-hotkey", key: "Mouse:Right" }, "*");
-      } else {
-        parent.postMessage({ hoshi: "press" }, "*");
-      }
-      return;
-    }
-    highlightRange = range.cloneRange();
-    parent.postMessage({ hoshi: "selection-menu" }, "*");
-  });
-
   window.webkit = {
     messageHandlers: {
       restoreCompleted: {
@@ -398,149 +341,6 @@
       pageChanged: { postMessage: (page) => parent.postMessage({ hoshi: "page", page }, "*") },
     },
   };
-
-  let lastMouse = null;
-  let mouseButtons = 0;
-  let scanTimer = 0;
-  document.addEventListener(
-    "mousemove",
-    (e) => {
-      mouseButtons = e.buttons;
-      lastMouse = { x: e.clientX, y: e.clientY };
-      clearTimeout(scanTimer);
-      if (e.buttons & ~scanButtonMask) return;
-      if (!modifierHeld(e)) {
-        if (!scanModifier) {
-          scanTimer = setTimeout(() => {
-            if (window.hoshiParagraph.animationFrame) return;
-            window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
-          }, scanDelay);
-        }
-        return;
-      }
-      if (window.hoshiParagraph.finishTextAnimation()) return;
-      window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
-    },
-    true,
-  );
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (!isScanKey(e.key)) return;
-      scanKeyHeld = true;
-      if (e.repeat || !lastMouse || mouseButtons) return;
-      if (window.hoshiParagraph.finishTextAnimation()) return;
-      window.hoshiSelection.selectText(lastMouse.x, lastMouse.y, window.scanLength);
-    },
-    true,
-  );
-  document.addEventListener(
-    "mouseup",
-    (e) => {
-      mouseButtons = e.buttons;
-    },
-    true,
-  );
-  document.addEventListener(
-    "keyup",
-    (e) => {
-      if (isScanKey(e.key)) scanKeyHeld = false;
-    },
-    true,
-  );
-  window.addEventListener("blur", () => {
-    scanKeyHeld = false;
-    mouseButtons = 0;
-  });
-  document.documentElement.addEventListener("mouseleave", () => {
-    lastMouse = null;
-    clearTimeout(scanTimer);
-  });
-  let mouseDownAt = null;
-  let secondaryLookup = false;
-  let selectionDismissed = false;
-  let pressedSelection = null;
-  document.addEventListener("mousedown", (e) => {
-    mouseButtons = e.buttons;
-    clearTimeout(scanTimer);
-    if (e.button === scanButton) {
-      e.preventDefault();
-      if (window.hoshiParagraph.finishTextAnimation()) return;
-      window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
-      return;
-    }
-    const token = mouseHotkeyTokens[e.button];
-    const aux = e.button === auxLookupButton;
-    if (token && token !== "Mouse:Right" && !aux && readerHotkeys.includes(token)) {
-      e.preventDefault();
-      parent.postMessage({ hoshi: "reader-hotkey", key: token }, "*");
-      return;
-    }
-    const secondary = e.button === 2 || (mac && e.ctrlKey);
-    secondaryRange = secondary ? selectionRangeAt(e) : null;
-    if (secondary ? clickLookup !== "right" || secondaryRange : e.button !== 0 && !aux) {
-      if (!window.getSelection().isCollapsed) e.preventDefault();
-      return;
-    }
-    if (aux) e.preventDefault();
-    secondaryLookup = secondary;
-    mouseDownAt = { x: e.clientX, y: e.clientY };
-    selectionDismissed = !window.getSelection().isCollapsed || !!window.hoshiSelection.selection;
-    if ((clickAdvance || clickEdge(e.clientX)) && e.detail > 1) e.preventDefault();
-    pressedSelection = window.hoshiSelection.selection;
-    window.hoshiSelection.clearSelection();
-    parent.postMessage({ hoshi: "press" }, "*");
-  });
-  document.addEventListener("selectstart", (e) => {
-    if (secondaryLookup) e.preventDefault();
-  });
-  document.addEventListener("mouseup", (e) => {
-    if (e.button === scanButton) return;
-    secondaryLookup = false;
-    if (e.button === 2 || (mac && e.ctrlKey)) {
-      if (clickLookup === "right" && !secondaryRange) onClick(e, 2);
-    } else if (e.button === 0 || e.button === auxLookupButton) {
-      onClick(e, e.button);
-    }
-    setTimeout(() => parent.postMessage({ hoshi: "release" }, "*"));
-  });
-  document.addEventListener("auxclick", (e) => {
-    const token = mouseHotkeyTokens[e.button];
-    if (e.button === scanButton || e.button === auxLookupButton) e.preventDefault();
-    else if (token && token !== "Mouse:Right" && readerHotkeys.includes(token)) e.preventDefault();
-  });
-  function onClick(e, button) {
-    if (modifierHeld(e)) return;
-    if (
-      mouseDownAt &&
-      (Math.abs(e.clientX - mouseDownAt.x) > 4 || Math.abs(e.clientY - mouseDownAt.y) > 4)
-    ) {
-      return;
-    }
-    const anchor = button === 0 && e.target instanceof Element ? e.target.closest("a[href]") : null;
-    if (window.hoshiParagraph.finishTextAnimation()) return;
-    if (anchor) {
-      parent.postMessage({ hoshi: "link", href: anchor.href }, "*");
-      return;
-    }
-    const lookup = button !== 0 || clickLookup === "left";
-    if (!lookup && !document.elementFromPoint(e.clientX, e.clientY)?.closest("ruby.furigana-hidden")) {
-      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
-      return;
-    }
-    const hit = pressedSelection && window.hoshiSelection.getCharacterAtPoint(e.clientX, e.clientY);
-    if (hit && hit.node === pressedSelection.startNode && hit.offset === pressedSelection.startOffset) {
-      parent.postMessage({ hoshi: "lookup-miss", dismissed: true }, "*");
-      return;
-    }
-    const selected = window.hoshiSelection.selectText(e.clientX, e.clientY, window.scanLength);
-    if (!selected && button === 0) {
-      parent.postMessage({ hoshi: "lookup-miss", edge: clickEdge(e.clientX), dismissed: selectionDismissed }, "*");
-    }
-  }
-  document.addEventListener("click", (e) => {
-    if (e.target instanceof Element && e.target.closest("a[href]")) e.preventDefault();
-  });
 
   let resizeAnchor = null;
   let resizeTimer = 0;
@@ -614,28 +414,6 @@
     }
   }
 
-  window.addEventListener("keydown", (e) => {
-    if (e.defaultPrevented || e.isComposing || e.target.closest("input, textarea, select, [contenteditable]")) return;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
-      e.preventDefault();
-      parent.postMessage({ hoshi: "search" }, "*");
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      parent.postMessage({ hoshi: "escape" }, "*");
-      return;
-    }
-    if (!e.ctrlKey && !e.altKey && !e.metaKey) {
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const control = e.target.closest("button, a, [role='button'], summary");
-      if (readerHotkeys.includes(key) && !(control && [" ", "Enter", "Tab"].includes(e.key))) {
-        e.preventDefault();
-        parent.postMessage({ hoshi: "reader-hotkey", key, repeat: e.repeat }, "*");
-      }
-    }
-  });
-
   window.addEventListener(
     "wheel",
     (e) => {
@@ -655,7 +433,7 @@
     const m = e.data;
     switch (m?.hoshi) {
       case "reader-hotkeys":
-        readerHotkeys = m.keys;
+        input.readerHotkeys = m.keys;
         break;
       case "turn":
         turn(m.dir);
@@ -683,8 +461,8 @@
       case "create-highlight": {
         const selection = window.getSelection();
         selection.removeAllRanges();
-        selection.addRange(highlightRange);
-        highlightRange = null;
+        selection.addRange(input.highlightRange);
+        input.highlightRange = null;
         const result = window.hoshiHighlights.createHighlight(m.color, m.id);
         if (result) parent.postMessage({ hoshi: "highlight-created", id: m.id, color: m.color, result }, "*");
         break;
@@ -731,7 +509,7 @@
         if (!textSpeed) window.hoshiParagraph.finishTextAnimation();
         break;
       case "click-advance":
-        clickAdvance = paragraphMode && m.enabled;
+        input.clickAdvance = paragraphMode && m.enabled;
         break;
       case "page-cues":
         parent.postMessage({ hoshi: "page-cues", ids: window.hoshiParagraph.pageSasayakiCues(), play: m.play }, "*");
@@ -745,62 +523,7 @@
     }
   });
 
-  function setupImage(el, src, wrap, blurred = el) {
-    let target = el;
-    if (blurImages) {
-      blurred.classList.add("blurred");
-      if (wrap) {
-        target = document.createElement("div");
-        target.className = "blur-wrapper";
-        blurred.before(target);
-        target.append(blurred);
-      }
-    }
-    target.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      blurred.classList.remove("blurred");
-    });
-    target.addEventListener("dblclick", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      parent.postMessage({ hoshi: "open-image", url: new URL(src, document.baseURI).href }, "*");
-    });
-  }
-
-  function setupImages() {
-    document
-      .querySelectorAll('svg[preserveAspectRatio="none"]')
-      .forEach((svg) => svg.removeAttribute("preserveAspectRatio"));
-    document.querySelectorAll("svg").forEach((svg) => {
-      const image = svg.querySelector("image");
-      if (image) setupImage(image, image.href.baseVal, false, svg);
-    });
-    const images = document.querySelectorAll("img");
-    const promises = Array.from(images).map(
-      (img) =>
-        new Promise((resolve) => {
-          function processImg() {
-            const isGaiji =
-              img.classList.contains("gaiji") || img.classList.contains("gaiji-line");
-            if (!isGaiji && (img.naturalWidth > 256 || img.naturalHeight > 256)) {
-              img.classList.add("block-img");
-              setupImage(img, img.src, true);
-            }
-            resolve();
-          }
-          if (img.complete) {
-            processImg();
-          } else {
-            img.onload = processImg;
-            img.onerror = () => resolve();
-          }
-        }),
-    );
-    return Promise.all(promises).then(() => new Promise((r) => setTimeout(r, 50)));
-  }
-
-  setupImages()
+  input.setupImages()
     .then(whenSized)
     .then(() => paragraphMode && r.awaitFonts().then(() => {
       if (maxSentencesPerPage > 0) window.hoshiParagraph.splitSentences(maxSentencesPerPage, splitDialogue);

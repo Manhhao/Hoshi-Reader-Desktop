@@ -3,6 +3,7 @@
   import { ask, open } from "@tauri-apps/plugin-dialog";
   import { Plus, Trash2 } from "@lucide/svelte";
   import { defaultFonts, readerConfig, saveReaderConfig } from "./readerConfig.svelte";
+  import type { ProgressCount } from "./readerConfig.svelte";
   import SettingGroup from "./SettingGroup.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingRow from "./SettingRow.svelte";
@@ -25,6 +26,9 @@
   const minHeight = 200 + ((screenHeight - 200) % 50);
 
   let tab = $state<"Layout" | "Display" | "Popup">("Layout");
+  const progressCounts = $derived<ProgressCount[]>(
+    readerConfig.continuousMode ? ["Off", "Characters"] : ["Off", "Characters", "Pages"],
+  );
 
   function save(update?: () => void) {
     saveReaderConfig();
@@ -325,6 +329,26 @@
   {/if}
 {/snippet}
 
+{#snippet continuous()}
+  <SettingRow label="Mode" {compact}>
+    <div class="join">
+      {#each [["Paginated", false], ["Continuous", true]] as const as [label, value] (label)}
+        <button
+          class="btn join-item btn-sm {readerConfig.continuousMode === value ? 'btn-active' : ''}"
+          onclick={() => {
+            if (readerConfig.continuousMode === value) return;
+            readerConfig.continuousMode = value;
+            if (value) readerConfig.paragraphMode = false;
+            save(onReload);
+          }}
+        >
+          {label}
+        </button>
+      {/each}
+    </div>
+  </SettingRow>
+{/snippet}
+
 {#snippet layoutSize()}
   <SettingStepper
     label="Horizontal Padding"
@@ -373,12 +397,14 @@
 {/snippet}
 
 {#snippet layoutToggles()}
-  <SettingToggle
-    label="Avoid Page Break"
-    {compact}
-    bind:checked={readerConfig.avoidPageBreak}
-    onchange={() => save(onRestyle)}
-  />
+  {#if !readerConfig.continuousMode}
+    <SettingToggle
+      label="Avoid Page Break"
+      {compact}
+      bind:checked={readerConfig.avoidPageBreak}
+      onchange={() => save(onRestyle)}
+    />
+  {/if}
   <SettingToggle
     label="Justify Text"
     {compact}
@@ -448,7 +474,7 @@
   {#if readerConfig.showProgress || readerConfig.showChapterProgress || (readerConfig.spreadLayout && readerConfig.spreadTopProgress)}
     <SettingRow label="Count" {compact}>
       <div class="join">
-        {#each ["Off", "Characters", "Pages"] as const as count (count)}
+        {#each progressCounts as count (count)}
           <button
             class="btn join-item btn-sm {readerConfig.progressCount === count ? 'btn-active' : ''}"
             onclick={() => {
@@ -553,8 +579,15 @@
     {/each}
   </div>
   {#if tab === "Layout"}
-    <SettingGroup>{@render paragraph()}</SettingGroup>
-    <SettingGroup>{@render spread()}</SettingGroup>
+    <SettingGroup>
+      {@render continuous()}
+      {#if !readerConfig.continuousMode}
+        {@render paragraph()}
+      {/if}
+    </SettingGroup>
+    {#if !readerConfig.continuousMode}
+      <SettingGroup>{@render spread()}</SettingGroup>
+    {/if}
     <SettingGroup>{@render layoutSize()}</SettingGroup>
     <SettingGroup>{@render layoutToggles()}</SettingGroup>
     {#if readerConfig.layoutAdvanced}
@@ -574,14 +607,19 @@
   </SettingsSection>
   <SettingsSection title="Text">{@render text()}</SettingsSection>
   <SettingsSection title="Layout">
-    {@render paragraph()}
+    {@render continuous()}
+    {#if !readerConfig.continuousMode}
+      {@render paragraph()}
+    {/if}
     {@render layoutSize()}
     {@render layoutToggles()}
     {#if readerConfig.layoutAdvanced}
       {@render layoutAdvanced()}
     {/if}
   </SettingsSection>
-  <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
+  {#if !readerConfig.continuousMode}
+    <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
+  {/if}
   <SettingsSection title="Progress">{@render progress()}</SettingsSection>
   <SettingsSection title="Display">{@render display()}</SettingsSection>
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>

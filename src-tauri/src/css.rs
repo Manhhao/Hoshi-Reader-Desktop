@@ -8,6 +8,19 @@ static CALIBRE_RULE: LazyLock<Regex> = LazyLock::new(|| {
 
 static RULE_BODY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^{}]*)\}").unwrap());
 
+static CSS_PRELUDE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?is)^\x{feff}?(?:\s+|/\*.*?\*/|@(?:charset|import|namespace)\b[^;{]*;)*").unwrap()
+});
+
+static CSS_IMPORT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(@import\s+(?:url\(\s*)?(?:"[^"]+|'[^']+|[^"'\s);]+))"#).unwrap()
+});
+
+static CSS_SELECTOR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([^{}]+)\{").unwrap());
+
+static SELECTOR_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"[\[.#:"'=]*[\w-]+"#).unwrap());
+
 const WRITING_MODE_PROPERTIES: [&str; 3] =
     ["writing-mode", "-webkit-writing-mode", "-epub-writing-mode"];
 
@@ -41,6 +54,26 @@ pub fn sanitize_css(css: &str) -> String {
     } else {
         result.into_owned()
     }
+}
+
+pub fn scope_continuous_css(css: &str, scope: &str) -> String {
+    let rules = CSS_PRELUDE.find(css).map_or(0, |prelude| prelude.end());
+    let prelude = CSS_IMPORT.replace_all(&css[..rules], format!("${{1}}?continuous={scope}"));
+    let rules = CSS_SELECTOR.replace_all(&css[rules..], |caps: &Captures| {
+        if caps[1].trim_start().starts_with('@') {
+            return caps[0].to_string();
+        }
+        let selector = SELECTOR_NAME.replace_all(&caps[1], |name: &Captures| {
+            match name[0].to_ascii_lowercase().as_str() {
+                "html" => "hoshi-html".to_string(),
+                "body" => "hoshi-body".to_string(),
+                ":root" => ".hoshi-root".to_string(),
+                _ => name[0].to_string(),
+            }
+        });
+        format!("{selector}{{")
+    });
+    format!("{prelude}@scope ([data-hoshi-styles~=\"{scope}\"]) {{\n{rules}\n}}\n")
 }
 
 fn sanitize_declaration(declaration: &str, strip_height: bool) -> Option<String> {
