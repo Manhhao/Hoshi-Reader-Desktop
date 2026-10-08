@@ -1,4 +1,6 @@
 <script lang="ts">
+  const WHEEL_ZOOM_STEP = Math.log(1.25);
+
   let { src, active }: { src: string; active: boolean } = $props();
 
   let viewport = $state<HTMLDivElement>();
@@ -76,7 +78,8 @@
     if (gestureZoom !== null) return;
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? height : 1;
     if (e.ctrlKey) {
-      setZoom(zoom * Math.exp(-e.deltaY * unit * 0.01), e.clientX, e.clientY, false);
+      const step = Math.max(-WHEEL_ZOOM_STEP, Math.min(-e.deltaY * unit * 0.01, WHEEL_ZOOM_STEP));
+      setZoom(zoom * Math.exp(step), e.clientX, e.clientY, false);
     } else {
       animateZoom = false;
       position = { x: offset.x - e.deltaX * unit, y: offset.y - e.deltaY * unit };
