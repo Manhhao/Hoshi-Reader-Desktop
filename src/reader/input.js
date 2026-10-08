@@ -281,6 +281,9 @@ window.hoshiInput = (function () {
             post({ hoshi: 'link', href: link.href });
             return;
         }
+        if (button === 0 && !clickEdge(e.clientX) && e.target instanceof Element && e.target.closest('img.block-img, svg image')) {
+            return;
+        }
 
         const miss = {
             hoshi: 'lookup-miss',
@@ -367,12 +370,11 @@ window.hoshiInput = (function () {
         target.addEventListener('click', e => {
             e.preventDefault();
             e.stopPropagation();
-            blurred.classList.remove('blurred');
-        });
-        target.addEventListener('dblclick', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            post({ hoshi: 'open-image', url: new URL(src, document.baseURI).href });
+            if (blurred.classList.contains('blurred')) {
+                blurred.classList.remove('blurred');
+            } else if (!clickEdge(e.clientX)) {
+                post({ hoshi: 'open-image', url: new URL(src, document.baseURI).href });
+            }
         });
     }
 
