@@ -3,13 +3,16 @@ window.hoshiHighlights = {
     searchHighlight: null,
     
     rootOf(node) {
-        return node.parentElement?.closest('hoshi-section') || document.body;
+        return node.parentElement?.closest('hoshi-section')?.hoshiSection.body || document.body;
     },
-    
+
     createHighlight(color, id) {
         const selection = window.getSelection();
         const range = selection.getRangeAt(0);
         const root = this.rootOf(range.startContainer);
+        if (this.rootOf(range.endContainer) !== root) {
+            return null;
+        }
         
         const startPrefix = range.startContainer.textContent.substring(0, range.startOffset);
         const endPrefix = range.endContainer.textContent.substring(0, range.endOffset);
@@ -155,15 +158,7 @@ window.hoshiHighlights = {
         }
         window.hoshiReader.refreshOffsets(root);
     },
-    
-    drop(root) {
-        for (const [id, entry] of this.highlights) {
-            if (entry.root === root) {
-                this.highlights.delete(id);
-            }
-        }
-    },
-    
+
     removeHighlight(id) {
         const entry = this.highlights.get(id);
         if (!entry) {

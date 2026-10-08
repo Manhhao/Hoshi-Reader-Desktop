@@ -760,8 +760,15 @@
       case "continuous-init":
         hc.init(m.spine, spineIndex);
         hc.prepare = prepareSection;
-        hc.onLoad = (spine) => parent.postMessage({ hoshi: "section-load", spine }, "*");
         hc.onProgress = (p, jump) => parent.postMessage({ hoshi: "progress", frac: p.frac, spine: p.spine, jump }, "*");
+        break;
+      case "continuous-data":
+        hc.ready.then(() => {
+          for (const chapter of m.chapters) {
+            applyCues(chapter.cues, chapter.spine);
+            applyHighlights(chapter.highlights, chapter.spine);
+          }
+        });
         break;
       case "goto":
         hc.goTo(m.spine, m.progress, m.fragment).then(() => {
@@ -829,12 +836,6 @@
         break;
       case "search-highlight":
         window.hoshiHighlights.showSearchHighlight(m.offset, m.length, sectionRoot(m.spine) ?? undefined);
-        break;
-      case "section-data":
-        if (hc.sections.get(m.spine)?.loaded) {
-          applyCues(m.cues, m.spine);
-          if (m.highlights) applyHighlights(m.highlights, m.spine);
-        }
         break;
       case "highlight":
         window.hoshiSelection.highlightSelection(m.count);

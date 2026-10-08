@@ -76,7 +76,7 @@ window.hoshiReader = {
             offsets.set(node, count);
             rawOffsets.set(node, rawCount);
             if (length > 0) {
-                nodes.push({ node, start: count, length });
+                nodes.push({ node, start: count });
             }
             count += length;
             rawCount += this.countRawChars(node.textContent);
@@ -86,7 +86,7 @@ window.hoshiReader = {
         this.nodeStartRawOffsets = rawOffsets;
         return { nodes, total: count };
     },
-    
+
     refreshOffsets(root) {
         if (root?.hoshiSection) {
             window.hoshiContinuous.index(root.hoshiSection);
@@ -94,7 +94,7 @@ window.hoshiReader = {
             this.buildNodeOffsets();
         }
     },
-    
+
     currentProgress() {
         return window.hoshiContinuous?.sections.size ? 0 : this.calculateProgress();
     },
@@ -476,18 +476,7 @@ window.hoshiReader = {
             }
         });
     },
-    
-    dropCues(root) {
-        this.cueWrappers.forEach((wrappers, id) => {
-            if (root.contains(wrappers[0])) {
-                this.cueWrappers.delete(id);
-                if (this.activeCueId === id) {
-                    this.activeCueId = null;
-                }
-            }
-        });
-    },
-    
+
     unwrap(wrappers) {
         wrappers.forEach(wrapper => {
             const parent = wrapper.parentNode;

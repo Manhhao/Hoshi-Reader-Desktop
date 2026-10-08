@@ -12,7 +12,6 @@ window.hoshiContinuous = {
     styles: new Map(),
     prepare: null,
     onProgress: null,
-    onLoad: null,
 
     init(spine, index) {
         this.spine = spine;
@@ -48,9 +47,6 @@ window.hoshiContinuous = {
         await Promise.all([...this.sections.values()].map(section => this.prepare?.(section.body)));
         await window.hoshiReader.awaitFonts();
         this.sections.forEach(section => this.index(section));
-        this.sections.forEach(section => {
-            if (section.i !== currentIndex) this.onLoad?.(section.i);
-        });
     },
 
     url(index) {

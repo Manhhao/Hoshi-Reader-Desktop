@@ -1341,14 +1341,6 @@
         }
         break;
       }
-      case "section-load":
-        postToFrame({
-          hoshi: "section-data",
-          spine: m.spine,
-          cues: sasayaki?.hasMatch ? sasayaki.cues(m.spine) : null,
-          highlights: $state.snapshot(chapterHighlights(m.spine)),
-        });
-        break;
       case "page-cues":
         sasayaki?.handlePageChanged(m.ids, m.play);
         break;
