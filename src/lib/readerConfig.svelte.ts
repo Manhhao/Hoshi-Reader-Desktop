@@ -86,7 +86,7 @@ const defaults: ReaderConfig = {
   continuousMode: false,
   textAnimation: false,
   textSpeed: 35,
-  clickToAdvance: true,
+  clickToAdvance: false,
   paragraphHideBookmark: true,
   fontSize: 22,
   furiganaMode: "Off",
