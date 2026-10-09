@@ -7,6 +7,7 @@
     const vertical = params.get('mode') === 'vertical';
     const furiganaMode = params.get('fm');
     const wheelDisabled = params.get('dw') === '1';
+    const proxied = vertical && !wheelDisabled && navigator.userAgent.includes('Windows');
     const fontName = params.get('font');
     const fontFile = params.get('ffile');
     const textColor = params.get('tc');
@@ -33,6 +34,8 @@
     let moving = 0;
     let scrollTimer = 0;
     let scrollReported = 0;
+    let proxyAt = NaN;
+    let proxyHeld = false;
 
     function post(message) {
         parent.postMessage(message, '*');
@@ -71,6 +74,19 @@
                 margin: ${paddingY / 2}vh 0 !important;
                 padding: 0 ${paddingX / 2}vw !important;
             `;
+
+        const proxyCss = proxied
+            ? `
+                html {
+                    overflow-y: auto !important;
+                    scrollbar-width: none !important;
+                }
+                body {
+                    position: sticky !important;
+                    top: 0 !important;
+                }
+            `
+            : '';
 
         let gridCss = '';
         if (!layout.justify) {
@@ -152,6 +168,7 @@
             body::-webkit-scrollbar {
                 display: none !important;
             }
+            ${proxyCss}
             hoshi-section {
                 display: flow-root !important;
             }
@@ -353,9 +370,22 @@
         post({ hoshi, ...position, jump });
     }
 
+    function syncProxy() {
+        if (!proxied) {
+            return;
+        }
+
+        const range = proxyHeld ? 0 : document.body.scrollWidth - document.body.clientWidth;
+
+        root.style.setProperty('height', `calc(100vh + ${range}px)`, 'important');
+        window.scrollTo(0, -document.body.scrollLeft);
+        proxyAt = window.scrollY;
+    }
+
     async function settle(move) {
         moving++;
         await move?.();
+        syncProxy();
         await new Promise(resolve => {
             requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
@@ -413,6 +443,7 @@
         const viewSize = vertical ? document.body.clientWidth : document.body.clientHeight;
         const step = viewSize * 0.8 * (direction === 'forward' ? 1 : -1);
 
+        syncProxy();
         window.hoshiHighlights.clearSearchHighlight();
         document.body.scrollBy({
             left: vertical ? -step : 0,
@@ -446,7 +477,35 @@
         post({ hoshi: 'sasayaki-image-result', paused: scrolled !== null });
     }
 
+    function onProxyScroll() {
+        if (proxyHeld || window.scrollY === proxyAt) {
+            return;
+        }
+
+        proxyAt = window.scrollY;
+        document.body.scrollLeft = -proxyAt;
+    }
+
+    function onProxyPointer(e) {
+        const held = (e.buttons & 1) === 1;
+
+        if (held !== proxyHeld) {
+            proxyHeld = held;
+            syncProxy();
+        }
+    }
+
+    function onProxyKey(e) {
+        if (!e.shiftKey && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+            e.preventDefault();
+        }
+    }
+
     function onScroll() {
+        if (proxied && !(Math.abs(document.body.scrollLeft + proxyAt) < 1)) {
+            syncProxy();
+        }
+
         if (!restored || moving) {
             return;
         }
@@ -469,7 +528,7 @@
     }
 
     function onWheel(e) {
-        if (!wheelDisabled && (!vertical || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
+        if (!wheelDisabled && (!vertical || (proxied && !proxyHeld) || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
             return;
         }
 
@@ -565,6 +624,12 @@
 
     document.body.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
+    if (proxied) {
+        window.addEventListener('scroll', onProxyScroll, { passive: true });
+        window.addEventListener('keydown', onProxyKey);
+        window.addEventListener('mousemove', onProxyPointer);
+        window.addEventListener('mouseup', onProxyPointer);
+    }
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('message', onMessage);
 

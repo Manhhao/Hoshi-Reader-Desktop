@@ -18,7 +18,7 @@ use crate::{Fallible, library, sasayaki};
 static CONTROLS: OnceLock<SystemMediaTransportControls> = OnceLock::new();
 
 pub const BROWSER_ARGS: &str =
-    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling";
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling --enable-smooth-scrolling";
 
 pub fn set_app_id(identifier: &str) -> Fallible {
     unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(identifier))? };
