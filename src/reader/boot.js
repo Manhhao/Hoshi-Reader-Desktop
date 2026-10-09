@@ -427,10 +427,10 @@
     { passive: false },
   );
 
-  function commitProgress(value) {
+  function commitProgress(value, jump) {
     position = value;
     updateMarker();
-    parent.postMessage({ hoshi: "progress", frac: position, jump: true }, "*");
+    parent.postMessage({ hoshi: "progress", frac: position, jump }, "*");
   }
 
   window.addEventListener("message", (e) => {
@@ -456,7 +456,7 @@
         if (m.highlights) window.hoshiHighlights.applyHighlights(m.highlights);
         r.jumpToFragment(m.fragment).then(() => {
           restored = true;
-          commitProgress(r.calculateProgress());
+          commitProgress(r.calculateProgress(), true);
         });
         break;
       case "restyle":

@@ -362,9 +362,9 @@
         moving--;
     }
 
-    function jumped() {
+    function revealed() {
         settle();
-        report('progress', true);
+        report('progress');
     }
 
     function positioned() {
@@ -441,7 +441,7 @@
     function scrollToSasayakiImage(spine, index) {
         const scrolled = reader.scrollToSasayakiImage(spine, index);
         if (scrolled) {
-            jumped();
+            revealed();
         }
         post({ hoshi: 'sasayaki-image-result', paused: scrolled !== null });
     }
@@ -527,7 +527,7 @@
                 break;
             case 'sasayaki-highlight':
                 if (reader.highlightSasayakiCue(m.id, m.reveal)) {
-                    jumped();
+                    revealed();
                 }
                 break;
             case 'sasayaki-clear':

@@ -1411,7 +1411,7 @@
         if (continuous) index = m.spine;
         progress = m.frac;
         saveBookmark();
-        if (pageAdvance) postToFrame({ hoshi: "page-cues", play: m.jump ? null : m.dir === "forward" });
+        if (pageAdvance) postToFrame({ hoshi: "page-cues", play: m.dir ? m.dir === "forward" : null });
         if (m.jump) {
           stats.resetTrackingBaseline();
         } else {
