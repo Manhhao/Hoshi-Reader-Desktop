@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { Menu } from "@tauri-apps/api/menu";
@@ -917,13 +917,27 @@
     };
   });
 
+  let windowFocused = $state(true);
+  const statsActive = $derived(
+    windowFocused || (sasayakiConfig.sasayakiBackgroundStatistics && !!sasayaki?.isPlaying),
+  );
+
+  $effect(() => {
+    const active = statsActive;
+    untrack(() => {
+      if (active) stats.resume();
+      else stats.pause();
+    });
+  });
+
   $effect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(async ({ payload: focused }) => {
+      windowFocused = focused;
+      await tick();
       if (focused) {
-        stats.resume();
         invoke("gdrive_sync_book", { id });
       } else {
-        await stats.pause();
+        await stats.flushStats();
         invoke("gdrive_sync_now");
       }
     });

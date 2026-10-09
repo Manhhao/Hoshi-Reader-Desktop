@@ -7,6 +7,7 @@ export type SasayakiConfig = {
   sasayakiImagePause: boolean;
   sasayakiImagePauseDuration: number;
   sasayakiPageAdvance: boolean;
+  sasayakiBackgroundStatistics: boolean;
   sasayakiShowControlBar: boolean;
   sasayakiTextColor: string;
   sasayakiBackgroundColor: string;
@@ -22,6 +23,7 @@ const defaults: SasayakiConfig = {
   sasayakiImagePause: true,
   sasayakiImagePauseDuration: 3,
   sasayakiPageAdvance: false,
+  sasayakiBackgroundStatistics: true,
   sasayakiShowControlBar: true,
   sasayakiTextColor: "#000000ff",
   sasayakiBackgroundColor: "#87cefa66",

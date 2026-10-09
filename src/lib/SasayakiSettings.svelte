@@ -47,6 +47,12 @@
       onchange={saveSasayakiConfig}
     />
   {/if}
+  <SettingToggle
+    label="Track Statistics in Background"
+    {compact}
+    bind:checked={sasayakiConfig.sasayakiBackgroundStatistics}
+    onchange={saveSasayakiConfig}
+  />
 {/snippet}
 
 {#snippet paragraphMode()}
