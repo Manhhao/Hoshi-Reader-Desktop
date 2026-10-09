@@ -491,15 +491,16 @@
 
   function placePopup(rect: SelectionRect, popupVertical: boolean): PopupPlacement {
     const area = contentEl.getBoundingClientRect();
-    return calculatePopupLayout(
-      rect,
-      { width: window.innerWidth, height: window.innerHeight },
+    const left = area.left + chromeInsetX;
+    const top = area.top + chromeInset;
+    const placement = calculatePopupLayout(
+      { ...rect, x: rect.x - left, y: rect.y - top },
+      { width: area.width - 2 * chromeInsetX, height: area.height - 2 * chromeInset },
       readerConfig.popupWidth,
       readerConfig.popupHeight,
       popupVertical,
-      area.top,
-      window.innerHeight - area.bottom,
     );
+    return { ...placement, left: placement.left + left, top: placement.top + top };
   }
 
   async function openLookup(
