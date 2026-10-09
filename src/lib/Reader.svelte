@@ -1920,6 +1920,7 @@
             {player.rate.toFixed(2)}x
           </div>
           <ul
+            tabindex="-1"
             class="dropdown-content menu z-30 mb-1 w-24 rounded-box border border-base-300 bg-base-100 text-base-content shadow-md"
           >
             {#each speedPresets as preset (preset)}

@@ -612,14 +612,14 @@
     e: MouseEvent & { currentTarget: HTMLElement },
   ) {
     setMapping(format, field, value);
-    e.currentTarget.blur();
+    (document.activeElement as HTMLElement | null)?.blur();
   }
 
   function pickFallback(value: string, e: MouseEvent & { currentTarget: HTMLElement }) {
     if (!anki) return;
     anki.selectedGlossaryFallback = value;
     saveAnki();
-    e.currentTarget.blur();
+    (document.activeElement as HTMLElement | null)?.blur();
   }
 
   const categoryLabels: Record<DictionaryCategory, string> = {
@@ -769,7 +769,7 @@
       {label}
       <ChevronDown class="size-3.5 text-base-content/50" />
     </div>
-    <ul class="dropdown-content menu z-30 my-1 max-h-72 w-56 flex-nowrap overflow-x-hidden overflow-y-auto overscroll-contain rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+    <ul tabindex="-1" class="dropdown-content menu z-30 my-1 max-h-72 w-56 flex-nowrap overflow-x-hidden overflow-y-auto overscroll-contain rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
       {#each items as item (item)}
         <li><button class="block truncate" onclick={() => insertCSS(snippet(item))}>{item}</button></li>
       {/each}
@@ -1581,6 +1581,7 @@
                               <ChevronDown class="size-4" />
                             </div>
                             <ul
+                              tabindex="-1"
                               class="dropdown-content menu z-30 my-1 max-h-72 w-56 flex-nowrap overflow-y-auto overscroll-contain rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
                             >
                               <li>
@@ -1685,6 +1686,7 @@
                       <ChevronDown class="size-4" />
                     </div>
                     <ul
+                      tabindex="-1"
                       class="dropdown-content menu z-30 my-1 w-72 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
                     >
                       <li>
