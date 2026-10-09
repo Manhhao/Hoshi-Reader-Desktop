@@ -100,8 +100,14 @@ pub struct AnkiConfig {
     pub show_all_handlebars: bool,
     pub audio_sources: Vec<AudioSource>,
     pub audio_enable_autoplay: bool,
+    #[serde(default = "default_audio_volume")]
+    pub audio_volume: f64,
     pub enable_local_audio: bool,
     pub local_audio_path: Option<String>,
+}
+
+fn default_audio_volume() -> f64 {
+    1.0
 }
 
 fn config_path(app: &AppHandle) -> PathBuf {
@@ -113,6 +119,7 @@ fn config_path(app: &AppHandle) -> PathBuf {
 pub fn load_config(app: &AppHandle) -> AnkiConfig {
     library::read_json(&config_path(app)).unwrap_or_else(|| AnkiConfig {
         url: Some("http://127.0.0.1:8765".to_string()),
+        audio_volume: default_audio_volume(),
         ..AnkiConfig::default()
     })
 }
@@ -491,6 +498,7 @@ pub struct PopupAnkiConfig {
     needs_audio: bool,
     audio_sources: Vec<AudioSource>,
     audio_enable_autoplay: bool,
+    audio_volume: f64,
 }
 
 #[tauri::command(async)]
@@ -522,6 +530,7 @@ pub fn anki_config(app: AppHandle, state: State<AnkiState>) -> PopupAnkiConfig {
             .cloned()
             .collect(),
         audio_enable_autoplay: config.audio_enable_autoplay,
+        audio_volume: config.audio_volume,
     }
 }
 

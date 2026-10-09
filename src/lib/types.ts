@@ -175,6 +175,7 @@ export type PopupAnkiConfig = {
   needsAudio: boolean;
   audioSources: AudioSource[];
   audioEnableAutoplay: boolean;
+  audioVolume: number;
 };
 
 export type AudioSource = {
@@ -217,6 +218,7 @@ export type AnkiSettings = {
   showAllHandlebars: boolean;
   audioSources: AudioSource[];
   audioEnableAutoplay: boolean;
+  audioVolume: number;
   enableLocalAudio: boolean;
   localAudioPath: string | null;
 };

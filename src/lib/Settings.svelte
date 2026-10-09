@@ -1148,10 +1148,19 @@
         </SettingsSection>
 
         <div class="card border border-base-300 bg-base-100">
-          <div class="card-body">
+          <div class="card-body gap-4">
             <SettingToggle
               label="Auto-play on Lookup"
               bind:checked={anki.audioEnableAutoplay}
+              onchange={saveAnki}
+            />
+            <SettingSlider
+              label="Volume"
+              bind:value={anki.audioVolume}
+              display={`${Math.round(anki.audioVolume * 100)}%`}
+              min={0}
+              max={1}
+              step={0.01}
               onchange={saveAnki}
             />
           </div>

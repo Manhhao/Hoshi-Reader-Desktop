@@ -130,6 +130,7 @@
       window.compactPitchAccents = true;
       window.audioSources = [];
       window.audioEnableAutoplay = false;
+      window.audioVolume = 1;
       window.needsAudio = false;
       window.allowDupes = false;
       window.useAnkiConnect = true;
@@ -226,6 +227,7 @@
             postMessage: ({ url }) => {
               if (currentWordAudio) currentWordAudio.pause();
               currentWordAudio = new Audio(url);
+              currentWordAudio.volume = window.audioVolume;
               currentWordAudio.play();
             },
           },
@@ -289,6 +291,7 @@
         window.needsAudio = anki.needsAudio;
         window.audioSources = anki.audioSources;
         window.audioEnableAutoplay = anki.audioEnableAutoplay;
+        window.audioVolume = anki.audioVolume;
       }
 
       function applyDictConfig(dict) {
