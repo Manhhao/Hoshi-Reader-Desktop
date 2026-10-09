@@ -293,6 +293,13 @@
   const frameEls = new Map<number, HTMLIFrameElement>();
   const frameWheelAt = new Map<number, number>();
   let frameCleanupTimer = 0;
+  let frameHovered = $state(false);
+
+  $effect(() => {
+    invoke("set_sideways_wheel", {
+      enable: frameHovered && continuous && vertical && !hotkeyConfig.disableReaderWheel,
+    });
+  });
 
   function frameRef(el: HTMLIFrameElement, key: number) {
     frameEls.set(key, el);
@@ -1570,6 +1577,7 @@
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("wheel", onWheel);
+      invoke("set_sideways_wheel", { enable: false });
       stats.flushStats();
       clearTimeout(settleTimer);
       clearTimeout(frameCleanupTimer);
@@ -1792,6 +1800,8 @@
           use:frameRef={frame.key}
           src={frame.src}
           title=""
+          onmouseenter={() => (frameHovered = true)}
+          onmouseleave={() => (frameHovered = false)}
           style="{iframeStyle}; background-color: {readerBg}"
           class:opacity-0={i < frames.length - 1 || resizing}
           class:pointer-events-none={i < frames.length - 1}

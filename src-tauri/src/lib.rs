@@ -24,6 +24,7 @@ mod sync;
 mod transcriber;
 mod ttu_statistics;
 mod updater;
+mod wheel;
 #[cfg(target_os = "macos")]
 mod writing_tools;
 
@@ -35,6 +36,8 @@ static EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::n
 pub fn run() {
     #[cfg(target_os = "macos")]
     writing_tools::disable();
+    #[cfg(target_os = "macos")]
+    wheel::mac::install();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -110,6 +113,7 @@ pub fn run() {
             highlights::load_highlights,
             highlights::save_highlights,
             ime::set_japanese_ime,
+            wheel::set_sideways_wheel,
             clipboard::clipboard_text,
             library::load_bookmark,
             library::load_pages,

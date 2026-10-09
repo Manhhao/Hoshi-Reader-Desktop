@@ -469,7 +469,7 @@
     }
 
     function onWheel(e) {
-        if (!vertical && !wheelDisabled) {
+        if (!wheelDisabled && (!vertical || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
             return;
         }
 
