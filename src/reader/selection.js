@@ -169,6 +169,10 @@ window.hoshiSelection = {
     },
     
     getCharacterAtPoint(x, y) {
+        if (document.elementFromPoint(x, y) === document.documentElement) {
+            return null;
+        }
+        
         const range = this.getCaretRange(x, y);
         if (!range) {
             return null;
