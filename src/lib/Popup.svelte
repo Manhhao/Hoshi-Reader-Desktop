@@ -123,8 +123,15 @@
       ),
     );
     const menu = await Menu.new({ items });
-    await menu.popup();
+    menuOpen = true;
+    try {
+      await menu.popup();
+    } finally {
+      menuOpen = false;
+    }
   }
+
+  let menuOpen = false;
 
   function onMessage(e: MessageEvent) {
     if (!iframeEl || e.source !== iframeEl.contentWindow) return;
@@ -230,7 +237,7 @@
   data-theme={chromeTheme(false)}
   role="presentation"
   onmouseenter={() => onHover(true)}
-  onmouseleave={() => onHover(false)}
+  onmouseleave={() => menuOpen || onHover(false)}
   class={fill
     ? "flex h-full w-full flex-col overflow-hidden"
     : `fixed flex flex-col overflow-hidden rounded-lg border border-base-content/30 shadow-md ${disableTransparency ? "bg-base-100" : "bg-base-100/45 backdrop-blur-2xl backdrop-saturate-150"}`}
