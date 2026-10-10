@@ -1783,7 +1783,15 @@
     class="relative min-h-0 flex-1 overflow-hidden"
     style="background-color: {readerBg}"
   >
-    <div class="absolute" style="inset: {chromeInset}px {chromeInsetX}px" bind:clientWidth={frameWidth} bind:clientHeight={frameHeight}>
+    <div
+      class="absolute"
+      style="inset: {chromeInset}px {chromeInsetX}px"
+      role="presentation"
+      onmouseenter={() => (frameHovered = true)}
+      onmouseleave={() => (frameHovered = false)}
+      bind:clientWidth={frameWidth}
+      bind:clientHeight={frameHeight}
+    >
       {#key pagesSrc}
         {#if pagesSrc}
           <iframe
@@ -1800,11 +1808,9 @@
           use:frameRef={frame.key}
           src={frame.src}
           title=""
-          onmouseenter={() => (frameHovered = true)}
-          onmouseleave={() => (frameHovered = false)}
           style="{iframeStyle}; background-color: {readerBg}"
           class:opacity-0={i < frames.length - 1 || resizing}
-          class:pointer-events-none={i < frames.length - 1}
+          class:pointer-events-none={i < frames.length - 1 || loading}
           class="absolute inset-x-0 top-0 border-0 transition-opacity duration-200"
         ></iframe>
       {/each}
