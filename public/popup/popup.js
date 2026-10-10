@@ -2122,6 +2122,11 @@ window.renderPopup = function() {
         ) {
             return;
         }
+        const pressed = window.pressedSelection;
+        const hit = pressed && window.hoshiSelection.getCharacterAtPoint(e.clientX, e.clientY);
+        if (hit && hit.node === pressed.startNode && hit.offset === pressed.startOffset) {
+            return;
+        }
         const selected = window.hoshiSelection?.selectText(e.clientX, e.clientY, window.scanLength);
         if (!selected) {
             webkit.messageHandlers.tapOutside.postMessage(null);

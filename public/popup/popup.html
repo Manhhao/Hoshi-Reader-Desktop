@@ -597,6 +597,7 @@
             return;
           }
           if (e.button === lookupButton && [1, 3, 4].includes(e.button)) e.preventDefault();
+          window.pressedSelection = window.hoshiSelection?.selection;
           if ((e.button === 0 || e.button === lookupButton) && !e.target.closest?.(".button-slot")) {
             window.hoshiSelection?.clearSelection();
           }
