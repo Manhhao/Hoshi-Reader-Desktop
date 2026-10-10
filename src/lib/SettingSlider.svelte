@@ -1,7 +1,7 @@
 <script lang="ts">
   import SettingRow from "./SettingRow.svelte";
 
-  let { label, value = $bindable(), display, min, max, step, compact = false, onchange }: {
+  let { label, value = $bindable(), display, min, max, step, compact = false, onchange, onrelease }: {
     label: string;
     value: number;
     display?: string;
@@ -10,6 +10,7 @@
     step: number;
     compact?: boolean;
     onchange: (value: number) => void;
+    onrelease?: () => void;
   } = $props();
 </script>
 
@@ -28,5 +29,6 @@
       value = Number(e.currentTarget.value);
       onchange(value);
     }}
+    onchange={() => onrelease?.()}
   />
 </div>

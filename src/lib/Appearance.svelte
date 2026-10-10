@@ -35,6 +35,14 @@
     update?.();
   }
 
+  function restyleLive() {
+    save(readerConfig.continuousMode ? undefined : onRestyle);
+  }
+
+  function restyleReleased() {
+    if (readerConfig.continuousMode) onRestyle?.();
+  }
+
   async function refreshFonts() {
     fonts = await invoke("list_fonts");
   }
@@ -378,8 +386,9 @@
     step={50}
     onchange={(value) => {
       readerConfig.maxWidth = value >= screenWidth ? 0 : value;
-      save(onRestyle);
+      restyleLive();
     }}
+    onrelease={restyleReleased}
   />
   <SettingSlider
     label="Max Height"
@@ -391,8 +400,9 @@
     step={50}
     onchange={(value) => {
       readerConfig.maxHeight = value >= screenHeight ? 0 : value;
-      save(onRestyle);
+      restyleLive();
     }}
+    onrelease={restyleReleased}
   />
 {/snippet}
 
@@ -434,7 +444,8 @@
     min={1}
     max={2.5}
     step={0.05}
-    onchange={() => save(onRestyle)}
+    onchange={restyleLive}
+    onrelease={restyleReleased}
   />
   <SettingSlider
     label="Character Spacing"
@@ -444,7 +455,8 @@
     min={-10}
     max={10}
     step={1}
-    onchange={() => save(onRestyle)}
+    onchange={restyleLive}
+    onrelease={restyleReleased}
   />
   <SettingSlider
     label="Paragraph Spacing"
@@ -454,7 +466,8 @@
     min={0}
     max={3}
     step={0.1}
-    onchange={() => save(onRestyle)}
+    onchange={restyleLive}
+    onrelease={restyleReleased}
   />
 {/snippet}
 

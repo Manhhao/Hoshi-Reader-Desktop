@@ -34,6 +34,7 @@
     let moving = 0;
     let scrollTimer = 0;
     let scrollReported = 0;
+    let restyleTimer = 0;
     let proxyAt = NaN;
     let proxyHeld = false;
 
@@ -198,6 +199,7 @@
             svg.blurred {
                 filter: blur(24px) !important;
                 clip-path: inset(0);
+                transform: translateZ(0);
                 cursor: pointer;
             }
             img.block-img:not(.blurred),
@@ -435,8 +437,11 @@
         layout.charSpacing = m.cs;
         layout.paraSpacing = m.ps;
 
-        applyStyle();
-        reflow();
+        clearTimeout(restyleTimer);
+        restyleTimer = setTimeout(() => {
+            applyStyle();
+            reflow();
+        }, 300);
     }
 
     function turn(direction) {
