@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 use hoshidicts::{Deinflector, LookupFrequencyOrder, LookupOptions, OwnedLookup, Query};
 use serde::{Deserialize, Serialize};
@@ -150,6 +151,12 @@ fn append_unconfigured(root: &Path, config: &mut DictConfig) {
     }
 }
 
+fn config_modified(app: &AppHandle) -> Option<SystemTime> {
+    fs::metadata(dictionaries_dir(app).join("config.json"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+}
+
 fn save_config(app: &AppHandle, config: &DictConfig) -> Result<(), String> {
     let root = dictionaries_dir(app);
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
@@ -244,10 +251,11 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<(), String> {
 struct Engine {
     lookup: OwnedLookup,
     styles: HashMap<String, String>,
+    config_modified: Option<SystemTime>,
 }
 
 impl Engine {
-    fn build(app: &AppHandle, config: &DictConfig) -> Self {
+    fn build(app: &AppHandle, config: &DictConfig, config_modified: Option<SystemTime>) -> Self {
         let mut query = Query::new();
         for kind in DictionaryType::all() {
             for entry in entries_for(config, kind) {
@@ -285,6 +293,7 @@ impl Engine {
         Self {
             lookup: OwnedLookup::new(query, Deinflector::new()),
             styles,
+            config_modified,
         }
     }
 }
@@ -301,7 +310,16 @@ impl LookupState {
 
     fn with_engine<T>(&self, app: &AppHandle, use_engine: impl FnOnce(&Engine) -> T) -> T {
         let mut guard = self.0.lock().unwrap();
-        use_engine(guard.get_or_insert_with(|| Engine::build(app, &load_config(app))))
+        let config_modified = config_modified(app);
+        if guard
+            .as_ref()
+            .is_some_and(|engine| engine.config_modified != config_modified)
+        {
+            *guard = None;
+        }
+        use_engine(
+            guard.get_or_insert_with(|| Engine::build(app, &load_config(app), config_modified)),
+        )
     }
 }
 
