@@ -1874,6 +1874,54 @@
       </button>
     {/snippet}
 
+    {#snippet popupSlider(
+      value: number,
+      min: number,
+      max: number,
+      set: (value: number) => void,
+      label = "",
+      presets: number[] = [],
+    )}
+      {@const percent = ((value - min) / (max - min)) * 100}
+      <div
+        class="invisible absolute bottom-full left-1/2 z-30 -translate-x-1/2 pb-2 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-has-[:active]:visible group-has-[:active]:opacity-100"
+      >
+        <div
+          class="flex flex-col rounded-box border border-base-300 bg-base-100 px-2.5 py-1 text-base-content shadow-md"
+        >
+          <div class="flex items-center gap-2">
+            <input
+              type="range"
+              class="block h-6 min-w-32 flex-1 cursor-pointer appearance-none rounded-full bg-current/25 bg-clip-content py-[10px] [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current"
+              style="background-image: linear-gradient(to right, currentColor {percent}%, transparent {percent}%)"
+              {min}
+              {max}
+              step="0.05"
+              {value}
+              oninput={(e) => set(Number(e.currentTarget.value))}
+            />
+            {#if label}
+              <span class="w-8 text-right tabular-nums">{label}</span>
+            {/if}
+          </div>
+          {#if presets.length}
+            <div class="flex gap-0.5 pb-1">
+              {#each presets as preset (preset)}
+                <button
+                  class="rounded px-1 py-0.5 tabular-nums hover:bg-base-content/10 {value === preset
+                    ? 'bg-base-content/15'
+                    : ''}"
+                  onclick={() => set(preset)}
+                >
+                  {preset}x
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/snippet}
+
     {#snippet transport(player: SasayakiPlayer)}
       {@const percent = player.duration ? (player.currentTime / player.duration) * 100 : 0}
       <div
@@ -1924,49 +1972,11 @@
               <Volume2 class="size-3.5" />
             {/if}
           </button>
-          <div
-            class="invisible absolute top-1/2 left-full z-30 flex -translate-y-1/2 items-center rounded opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-has-[:active]:visible group-has-[:active]:opacity-100"
-            style="background-color: {readerBg}"
-          >
-            <input
-              type="range"
-              class="mx-2 h-6 w-16 cursor-pointer appearance-none rounded-full bg-current/25 bg-clip-content py-[11px] [&::-webkit-slider-thumb]:size-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current"
-              style="background-image: linear-gradient(to right, currentColor {player.volume *
-                100}%, transparent {player.volume * 100}%)"
-              min="0"
-              max="1"
-              step="0.05"
-              value={player.volume}
-              oninput={(e) => player.setVolume(Number(e.currentTarget.value))}
-            />
-          </div>
+          {@render popupSlider(player.volume, 0, 1, (value) => player.setVolume(value), `${Math.round(player.volume * 100)}%`)}
         </div>
-        <div class="dropdown dropdown-end dropdown-top -ml-1">
-          <div
-            tabindex="0"
-            role="button"
-            class="cursor-pointer whitespace-nowrap rounded px-1 tabular-nums hover:bg-current/10"
-          >
-            {player.rate.toFixed(2)}x
-          </div>
-          <ul
-            tabindex="-1"
-            class="dropdown-content menu z-30 mb-1 w-24 rounded-box border border-base-300 bg-base-100 text-base-content shadow-md"
-          >
-            {#each speedPresets as preset (preset)}
-              <li>
-                <button
-                  class="tabular-nums {player.rate === preset ? 'menu-active' : ''}"
-                  onclick={() => {
-                    player.setRate(preset);
-                    (document.activeElement as HTMLElement | null)?.blur();
-                  }}
-                >
-                  {preset.toFixed(2)}x
-                </button>
-              </li>
-            {/each}
-          </ul>
+        <div class="group relative -ml-1 flex items-center">
+          <span class="whitespace-nowrap px-1 tabular-nums">{player.rate.toFixed(2)}x</span>
+          {@render popupSlider(player.rate, 0.5, 3, (value) => player.setRate(value), "", speedPresets)}
         </div>
       </div>
     {/snippet}
