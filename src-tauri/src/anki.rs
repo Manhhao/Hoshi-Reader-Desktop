@@ -838,14 +838,17 @@ pub async fn anki_mine(
     for (field, mapping) in &format.field_mappings {
         if mapping == "{audio}" {
             audio_fields.push(field.clone());
+            fields.insert(field.clone(), String::new());
             continue;
         }
         if mapping == "{sasayaki-audio}" {
             sasayaki_audio_fields.push(field.clone());
+            fields.insert(field.clone(), String::new());
             continue;
         }
         if mapping == "{book-cover}" {
             picture_fields.push(field.clone());
+            fields.insert(field.clone(), String::new());
             continue;
         }
         let value = RE_HANDLEBAR
