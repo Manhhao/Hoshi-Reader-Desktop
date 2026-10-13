@@ -164,7 +164,6 @@ export type KanjiResponse = {
 
 export type PopupAnkiConfig = {
   useAnkiConnect: boolean;
-  isAnkiConnectReachable: boolean;
   allowDupes: boolean;
   disableShowNotes: boolean;
   compactGlossariesAnki: boolean;

@@ -134,7 +134,6 @@
       window.needsAudio = false;
       window.allowDupes = false;
       window.useAnkiConnect = true;
-      window.isAnkiConnectReachable = false;
       window.cardFormatCount = 0;
       window.validFormatFlags = [];
       window.disableShowNotes = false;
@@ -148,9 +147,9 @@
       let bridgeSeq = 0;
       const pendingReplies = {};
       function bridgeCall(channel, payload) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const id = ++bridgeSeq;
-          pendingReplies[id] = resolve;
+          pendingReplies[id] = { resolve, reject };
           parent.postMessage({ hoshi: channel, id, ...payload }, "*");
         });
       }
@@ -281,7 +280,6 @@
         if (!anki) return;
         applyMineIcons(anki.cardFormatIcons);
         window.useAnkiConnect = anki.useAnkiConnect;
-        window.isAnkiConnectReachable = anki.isAnkiConnectReachable;
         window.allowDupes = anki.allowDupes;
         window.disableShowNotes = anki.disableShowNotes;
         window.compactGlossariesAnki = anki.compactGlossariesAnki;
@@ -396,7 +394,7 @@
           ?.querySelectorAll("span.matched")
           .forEach((span) => span.classList.remove("matched"));
         ensureSearchText();
-        if (window.entryCount) window.renderPopup();
+        window.renderPopup();
       }
 
       function ensureSearchText() {
@@ -460,17 +458,20 @@
         } else if (m?.hoshi === "redirect-result") {
           window.__entries = m.entries;
           window.dictionaryStyles = m.styles;
-          const resolve = pendingReplies[m.id];
+          const reply = pendingReplies[m.id];
           delete pendingReplies[m.id];
-          if (resolve) resolve(m.count);
+          if (reply) reply.resolve(m.count);
         } else if (
           m?.hoshi === "mine-result" ||
           m?.hoshi === "dupecheck-result" ||
           m?.hoshi === "kanji-result"
         ) {
-          const resolve = pendingReplies[m.id];
+          const reply = pendingReplies[m.id];
           delete pendingReplies[m.id];
-          if (resolve) resolve(m.result);
+          if (reply) {
+            if (m.error) reply.reject(new Error(m.error));
+            else reply.resolve(m.result);
+          }
         } else if (m?.hoshi === "play-audio") {
           playEntryAudio(m.entryIndex, m.sourceIndex);
         } else if (m?.hoshi === "highlight") {

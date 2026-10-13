@@ -487,7 +487,6 @@ fn parse_single_glossaries(content: &HashMap<String, String>) -> HashMap<String,
 #[serde(rename_all = "camelCase")]
 pub struct PopupAnkiConfig {
     use_anki_connect: bool,
-    is_anki_connect_reachable: bool,
     allow_dupes: bool,
     disable_show_notes: bool,
     compact_glossaries_anki: bool,
@@ -502,11 +501,10 @@ pub struct PopupAnkiConfig {
 }
 
 #[tauri::command(async)]
-pub fn anki_config(app: AppHandle, state: State<AnkiState>) -> PopupAnkiConfig {
+pub fn anki_config(app: AppHandle) -> PopupAnkiConfig {
     let config = load_config(&app);
     PopupAnkiConfig {
         use_anki_connect: true,
-        is_anki_connect_reachable: state.reachable.load(Ordering::Relaxed),
         allow_dupes: config.allow_dupes,
         disable_show_notes: config.disable_show_notes,
         compact_glossaries_anki: config.compact_glossaries,
@@ -752,7 +750,10 @@ pub async fn anki_fetch(app: AppHandle, state: State<'_, AnkiState>) -> Result<A
 }
 
 #[tauri::command]
-pub async fn anki_check_duplicates(app: AppHandle, fields: HashMap<String, String>) -> Vec<bool> {
+pub async fn anki_check_duplicates(
+    app: AppHandle,
+    fields: HashMap<String, String>,
+) -> Result<Vec<bool>, String> {
     let config = load_config(&app);
     let mut results = vec![false; config.card_formats.len()];
 
@@ -785,7 +786,7 @@ pub async fn anki_check_duplicates(app: AppHandle, fields: HashMap<String, Strin
     }
 
     if notes.is_empty() {
-        return results;
+        return Ok(results);
     }
 
     match anki_request(
@@ -796,6 +797,9 @@ pub async fn anki_check_duplicates(app: AppHandle, fields: HashMap<String, Strin
     .await
     {
         Ok(value) => {
+            app.state::<AnkiState>()
+                .reachable
+                .store(true, Ordering::Relaxed);
             if let Some(arr) = value.as_array() {
                 for (idx, note_result) in indices.iter().zip(arr) {
                     if let Some(can_add) = note_result.get("canAdd").and_then(|v| v.as_bool()) {
@@ -804,11 +808,12 @@ pub async fn anki_check_duplicates(app: AppHandle, fields: HashMap<String, Strin
                 }
             }
         }
-        Err(_) => {
+        Err(error) => {
             anki_ping(app).await;
+            return Err(error);
         }
     }
-    results
+    Ok(results)
 }
 
 #[tauri::command]

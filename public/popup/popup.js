@@ -1557,20 +1557,24 @@ async function checkDuplicates(entryIndex) {
         return;
     }
 
-    if (window.useAnkiConnect && !window.isAnkiConnectReachable) {
-        getButtonSlots('mine', entryIndex).forEach(slot => {
-            updateButtonSlot(slot, { state: 'default', enabled: false });
-            updateButtonSlot(getButtonSlot('note', entryIndex, Number(slot.dataset.slotIndex)), { hidden: true });
+    const generation = renderGeneration;
+    let results;
+    try {
+        results = await webkit.messageHandlers.duplicateCheck.postMessage({
+            '{expression}': entry.expression,
+            '{reading}': entry.reading
         });
+    } catch {
+        if (generation !== renderGeneration) { return; }
+        getButtonSlots('mine', entryIndex).forEach(slot => {
+            updateButtonSlot(slot, { state: 'error', enabled: false });
+        });
+        setTimeout(() => {
+            if (generation === renderGeneration) { checkDuplicates(entryIndex); }
+        }, 2000);
         return;
     }
-
-    const generation = renderGeneration;
-    const results = await webkit.messageHandlers.duplicateCheck.postMessage({
-        '{expression}': entry.expression,
-        '{reading}': entry.reading
-    });
-    if (generation !== renderGeneration) {
+    if (generation !== renderGeneration || results === null) {
         return;
     }
     getButtonSlots('mine', entryIndex).forEach(slot => {
@@ -1603,8 +1607,9 @@ async function mineEntryAtIndex(entryIndex, slotIndex) {
     lastSelection = window.getSelection()?.toString() || '';
     getButtonSlots('mine', entryIndex).forEach(slot => updateButtonSlot(slot, { enabled: false }));
     
-    await mineEntry(expression, reading, frequencies, pitches, rules, matched, entryIndex, lastSelection, slotIndex);
-    await checkDuplicates(entryIndex);
+    const generation = renderGeneration;
+    await mineEntry(expression, reading, frequencies, pitches, rules, matched, entryIndex, lastSelection, slotIndex).catch(() => false);
+    if (generation === renderGeneration) { await checkDuplicates(entryIndex); }
 }
 
 function showNotesAtIndex(entryIndex, slotIndex) {
@@ -1650,12 +1655,7 @@ function createEntryHeader(entry, idx) {
             buttonsContainer.appendChild(wrapper);
         }
     }
-    const scheduledGeneration = renderGeneration;
-    setTimeout(() => {
-        if (scheduledGeneration === renderGeneration) {
-            checkDuplicates(idx);
-        }
-    }, 100);
+    checkDuplicates(idx);
     
     if (window.audioSources?.length) {
         buttonsContainer.appendChild(createButtonSlot('audio', idx, null));
@@ -1944,10 +1944,11 @@ document.addEventListener('toggle', () => requestAnimationFrame(reportButtonRect
 let renderGeneration = 0;
 window.renderPopup = function() {
     const container = document.getElementById('entries-container');
+    const generation = ++renderGeneration;
+    parent.postMessage({ hoshi: 'dupecheck-reset' }, '*');
     if (!window.entryCount) {
         return;
     }
-    const generation = ++renderGeneration;
 
     (async () => {
         for (let idx = 0; idx < window.entryCount; idx++) {
@@ -1960,6 +1961,7 @@ window.renderPopup = function() {
                     start: idx,
                     count: Math.min(4, window.entryCount - idx)
                 });
+                if (generation !== renderGeneration) { return; }
                 entries.forEach((entry, offset) => {
                     window.lookupEntries[idx + offset] = entry;
                 });

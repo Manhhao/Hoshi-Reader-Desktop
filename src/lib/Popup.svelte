@@ -16,6 +16,7 @@
   import type { PopupPlacement } from "./popupLayout";
   import { schemeUrl } from "./scheme";
   import { chromeTheme } from "./theme.svelte";
+  import { ankiQueue } from "./ankiQueue";
 
   let {
     entries,
@@ -91,6 +92,7 @@
 
   let iframeEl: HTMLIFrameElement;
   let channelReady = $state(false);
+  const ankiOwner = {};
 
   function send(msg: unknown) {
     iframeEl?.contentWindow?.postMessage(msg, "*");
@@ -176,12 +178,21 @@
         });
         break;
       }
-      case "mine":
-        onMine(m.content).then((result) => send({ hoshi: "mine-result", id: m.id, result }));
+      case "mine": {
+        const mine = onMine;
+        ankiQueue.enqueue(ankiOwner, () => mine(m.content), true).then(
+          (result) => send({ hoshi: "mine-result", id: m.id, result }),
+          (error) => send({ hoshi: "mine-result", id: m.id, error: String(error) }),
+        );
+        break;
+      }
+      case "dupecheck-reset":
+        ankiQueue.cancelChecks(ankiOwner);
         break;
       case "dupecheck":
-        onDuplicateCheck(m.fields).then((result) =>
-          send({ hoshi: "dupecheck-result", id: m.id, result }),
+        ankiQueue.enqueue(ankiOwner, () => onDuplicateCheck(m.fields)).then(
+          (result) => send({ hoshi: "dupecheck-result", id: m.id, result }),
+          (error) => send({ hoshi: "dupecheck-result", id: m.id, error: String(error) }),
         );
         break;
       case "show-notes":
@@ -201,7 +212,10 @@
 
   $effect(() => {
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      ankiQueue.cancelChecks(ankiOwner);
+    };
   });
 
   $effect(() => {
