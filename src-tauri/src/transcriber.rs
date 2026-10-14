@@ -41,8 +41,6 @@ impl SasayakiTranscript {
 #[derive(Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum Progress {
-    #[cfg(windows)]
-    Preparing,
     #[cfg(target_os = "macos")]
     Downloading {
         fraction: f64,
@@ -118,17 +116,7 @@ pub async fn sasayaki_transcribe(
     let _job = Job;
     let root = library::book_dir(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;
     let progress = |progress: Progress| on_progress.send(progress).ok();
-    #[cfg(windows)]
-    progress(Progress::Preparing);
-    let audio_path = path.clone();
-    let preparation = cancel.clone();
-    let audio =
-        tauri::async_runtime::spawn_blocking(move || backend::prepare(&audio_path, &preparation))
-            .await
-            .unwrap()?;
-    if cancel.is_cancelled() {
-        return Ok(());
-    }
+    let audio = backend::prepare(&path)?;
     let duration = audio.duration;
 
     let mut playback = sasayaki::load_sasayaki_playback(&root).unwrap_or_default();

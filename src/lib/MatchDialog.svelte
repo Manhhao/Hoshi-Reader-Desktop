@@ -5,7 +5,6 @@
   import type { BookInfo, SasayakiMatchData, SasayakiPlayback } from "./types";
 
   type Progress =
-    | { state: "preparing" }
     | { state: "downloading"; fraction: number }
     | { state: "transcribing"; through: number; duration: number; remaining: number | null }
     | { state: "aligning" };
@@ -106,8 +105,6 @@
 
   function progressLabel(progress: Progress | null): string {
     switch (progress?.state) {
-      case "preparing":
-        return "Preparing audio…";
       case "downloading":
         return `Downloading model… ${Math.floor(progress.fraction * 100)}%`;
       case "transcribing":

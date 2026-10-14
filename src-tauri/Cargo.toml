@@ -71,7 +71,6 @@ windows = { version = "0.61", features = [
 ] }
 windows-native-keyring-store = "1"
 libloading = "0.8"
-tempfile = "3"
 
 [profile.dev.package."*"]
 opt-level = 2

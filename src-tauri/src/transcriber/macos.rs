@@ -26,7 +26,7 @@ pub struct Audio {
     pub duration: f64,
 }
 
-pub fn prepare(path: &str, _cancel: &CancellationToken) -> Result<Audio, String> {
+pub fn prepare(path: &str) -> Result<Audio, String> {
     let path = CString::new(path).map_err(|error| error.to_string())?;
     let duration = unsafe { hoshi_audio_duration(path.as_ptr()) };
     if duration < 0.0 {

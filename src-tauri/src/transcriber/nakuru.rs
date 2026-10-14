@@ -1,6 +1,4 @@
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
-use std::fs::File;
-use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -12,9 +10,9 @@ use windows_sys::Win32::System::LibraryLoader::{
 };
 
 use super::{Event, Events};
+use crate::pcm::{MonoReader, with_media_foundation};
 use crate::sasayaki::SasayakiToken;
 
-const SAMPLE_RATE: usize = 16000;
 const NAKURU_FAILED: c_int = -1;
 const NAKURU_FINISHED: c_int = 1;
 
@@ -59,39 +57,20 @@ pub async fn status(app: AppHandle) -> &'static str {
 }
 
 pub struct Audio {
-    file: File,
-    count: usize,
+    path: PathBuf,
+    mime: &'static str,
     pub duration: f64,
 }
 
-pub fn prepare(path: &str, cancel: &CancellationToken) -> Result<Audio, String> {
-    let mut file = tempfile::tempfile().map_err(|error| error.to_string())?;
-    let mut writer = BufWriter::new(&mut file);
-    let mut count = 0;
-    let mut failure = None;
-    let path = Path::new(path);
-    crate::pcm::decode_mono(path, crate::sasayaki::audio_mime(path), &mut |samples| {
-        if cancel.is_cancelled() {
-            return false;
-        }
-        let bytes =
-            unsafe { std::slice::from_raw_parts(samples.as_ptr().cast(), samples.len() * 2) };
-        if let Err(error) = writer.write_all(bytes) {
-            failure = Some(error.to_string());
-            return false;
-        }
-        count += samples.len();
-        true
-    })?;
-    if let Some(error) = failure {
-        return Err(error);
-    }
-    writer.flush().map_err(|error| error.to_string())?;
-    drop(writer);
+pub fn prepare(path: &str) -> Result<Audio, String> {
+    let path = PathBuf::from(path);
+    let mime = crate::sasayaki::audio_mime(&path);
+    let duration = with_media_foundation(|| MonoReader::duration(&path, mime))
+        .map_err(|error| error.to_string())?;
     Ok(Audio {
-        file,
-        count,
-        duration: count as f64 / SAMPLE_RATE as f64,
+        path,
+        mime,
+        duration,
     })
 }
 
@@ -105,14 +84,15 @@ pub fn start(
 ) -> Result<(), String> {
     let root = locate(app).ok_or("Nakuru is not installed")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let result = run(&root, audio, from, speed, &events, cancel);
+        let result = with_media_foundation(|| Ok(run(&root, audio, from, speed, &events, cancel)))
+            .unwrap_or_else(|error| Err(error.to_string()));
         events.send(Event::Finish(result.err())).ok();
     });
     Ok(())
 }
 
 struct Recognition {
-    audio: Mutex<File>,
+    audio: Mutex<MonoReader>,
     error: Mutex<Option<String>>,
     offset: usize,
     from: f64,
@@ -130,18 +110,10 @@ unsafe extern "C" fn read(
     if job.cancel.is_cancelled() {
         return 0;
     }
-    let mut bytes = vec![0; count * 2];
-    let mut file = job.audio.lock().unwrap();
-    let result = file
-        .seek(SeekFrom::Start((job.offset + offset) as u64 * 2))
-        .and_then(|_| file.read_exact(&mut bytes));
-    if let Err(error) = result {
+    let samples = unsafe { std::slice::from_raw_parts_mut(pcm16, count) };
+    if let Err(error) = job.audio.lock().unwrap().read(job.offset + offset, samples) {
         *job.error.lock().unwrap() = Some(error.to_string());
         return 0;
-    }
-    let samples = unsafe { std::slice::from_raw_parts_mut(pcm16, count) };
-    for (sample, pair) in samples.iter_mut().zip(bytes.chunks_exact(2)) {
-        *sample = i16::from_le_bytes([pair[0], pair[1]]) as f32;
     }
     1
 }
@@ -221,12 +193,16 @@ fn run(
     if recognizer.is_null() {
         return Err(failure());
     }
-    let offset = ((from * SAMPLE_RATE as f64).round() as usize).min(audio.count);
+    let count = (audio.duration * MonoReader::RATE as f64).round() as usize;
+    let offset = ((from * MonoReader::RATE as f64).round() as usize).min(count);
+    let from = offset as f64 / MonoReader::RATE as f64;
+    let reader =
+        MonoReader::open(&audio.path, audio.mime, from).map_err(|error| error.to_string())?;
     let job = Recognition {
-        audio: Mutex::new(audio.file),
+        audio: Mutex::new(reader),
         error: Mutex::new(None),
         offset,
-        from: offset as f64 / SAMPLE_RATE as f64,
+        from,
         events: events.clone(),
         cancel,
     };
@@ -234,7 +210,7 @@ fn run(
         transcribe(
             recognizer,
             read,
-            audio.count - offset,
+            count - offset,
             emit,
             (&raw const job).cast_mut().cast(),
         )

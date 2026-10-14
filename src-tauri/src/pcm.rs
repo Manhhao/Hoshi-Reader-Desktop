@@ -4,11 +4,11 @@ pub type Pcm = (Vec<i16>, u32, usize);
 
 #[cfg(windows)]
 pub fn decode(path: &Path, start: f64, end: f64, mime: &str) -> Option<Pcm> {
-    unsafe { with_media_foundation(|| read_media_foundation(path, start, end, mime)) }.ok()
+    with_media_foundation(|| unsafe { read_media_foundation(path, start, end, mime) }).ok()
 }
 
 #[cfg(windows)]
-unsafe fn with_media_foundation<T>(
+pub fn with_media_foundation<T>(
     read: impl FnOnce() -> windows::core::Result<T>,
 ) -> windows::core::Result<T> {
     use windows::Win32::Media::MediaFoundation::{
@@ -171,39 +171,89 @@ unsafe fn open_reader(
 }
 
 #[cfg(windows)]
-pub fn decode_mono(
-    path: &Path,
-    mime: &str,
-    sink: &mut dyn FnMut(&[i16]) -> bool,
-) -> Result<(), String> {
-    use windows::Win32::Media::MediaFoundation::*;
+pub struct MonoReader {
+    reader: windows::Win32::Media::MediaFoundation::IMFSourceReader,
+    samples: Vec<i16>,
+    start: usize,
+    ended: bool,
+}
 
-    unsafe {
-        with_media_foundation(|| {
+#[cfg(windows)]
+impl MonoReader {
+    pub const RATE: usize = 16000;
+
+    pub fn duration(path: &Path, mime: &str) -> windows::core::Result<f64> {
+        use windows::Win32::Media::MediaFoundation::*;
+
+        unsafe {
             let reader = open_reader(path, mime, true)?;
-            let audio = MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32;
-            loop {
-                let mut flags = 0;
-                let mut sample = None;
-                reader.ReadSample(audio, 0, None, Some(&mut flags), None, Some(&mut sample))?;
-                if let Some(sample) = sample {
-                    let buffer = sample.ConvertToContiguousBuffer()?;
-                    let mut data = std::ptr::null_mut();
-                    let mut len = 0;
-                    buffer.Lock(&mut data, None, Some(&mut len))?;
-                    let chunk = std::slice::from_raw_parts(data.cast::<i16>(), len as usize / 2);
-                    let keep_reading = sink(chunk);
-                    buffer.Unlock()?;
-                    if !keep_reading {
-                        break;
-                    }
-                }
-                if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
-                    break;
-                }
-            }
-            Ok(())
-        })
+            let duration = reader
+                .GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE.0 as u32, &MF_PD_DURATION)?;
+            Ok(u64::try_from(&duration)? as f64 / 1e7)
+        }
     }
-    .map_err(|error| error.to_string())
+
+    pub fn open(path: &Path, mime: &str, from: f64) -> windows::core::Result<Self> {
+        use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+        use windows::core::GUID;
+
+        unsafe {
+            let reader = open_reader(path, mime, true)?;
+            reader.SetCurrentPosition(&GUID::zeroed(), &PROPVARIANT::from((from * 1e7) as i64))?;
+            Ok(MonoReader {
+                reader,
+                samples: Vec::new(),
+                start: 0,
+                ended: false,
+            })
+        }
+    }
+
+    pub fn read(&mut self, index: usize, output: &mut [f32]) -> windows::core::Result<()> {
+        use windows::Win32::Media::MediaFoundation::*;
+
+        let skip = index.saturating_sub(self.start).min(self.samples.len());
+        self.samples.drain(..skip);
+        self.start += skip;
+        while !self.ended && self.start + self.samples.len() < index + output.len() {
+            let mut flags = 0;
+            let mut timestamp = 0;
+            let mut sample = None;
+            unsafe {
+                self.reader.ReadSample(
+                    MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32,
+                    0,
+                    None,
+                    Some(&mut flags),
+                    Some(&mut timestamp),
+                    Some(&mut sample),
+                )?;
+            }
+            self.ended = flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0;
+            let Some(sample) = sample else {
+                continue;
+            };
+            if self.samples.is_empty() {
+                self.start = (timestamp as f64 * Self::RATE as f64 / 1e7)
+                    .round()
+                    .max(0.0) as usize;
+            }
+            unsafe {
+                let buffer = sample.ConvertToContiguousBuffer()?;
+                let mut data = std::ptr::null_mut();
+                let mut len = 0;
+                buffer.Lock(&mut data, None, Some(&mut len))?;
+                let chunk = std::slice::from_raw_parts(data.cast::<i16>(), len as usize / 2);
+                self.samples.extend_from_slice(chunk);
+                buffer.Unlock()?;
+            }
+        }
+        for (position, value) in (index..).zip(output.iter_mut()) {
+            *value = position
+                .checked_sub(self.start)
+                .and_then(|offset| self.samples.get(offset))
+                .map_or(0.0, |&sample| sample as f32);
+        }
+        Ok(())
+    }
 }
