@@ -15,7 +15,6 @@ use super::{Event, Events};
 use crate::sasayaki::SasayakiToken;
 
 const SAMPLE_RATE: usize = 16000;
-const NAKURU_BALANCED: c_int = 1;
 const NAKURU_FAILED: c_int = -1;
 const NAKURU_FINISHED: c_int = 1;
 
@@ -100,12 +99,13 @@ pub fn start(
     app: &AppHandle,
     audio: Audio,
     from: f64,
+    speed: i32,
     events: Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
     let root = locate(app).ok_or("Nakuru is not installed")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let result = run(&root, audio, from, &events, cancel);
+        let result = run(&root, audio, from, speed, &events, cancel);
         events.send(Event::Finish(result.err())).ok();
     });
     Ok(())
@@ -175,6 +175,7 @@ fn run(
     root: &Path,
     audio: Audio,
     from: f64,
+    speed: i32,
     events: &Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
@@ -216,7 +217,7 @@ fn run(
     if cancel.is_cancelled() {
         return Ok(());
     }
-    let recognizer = unsafe { create(bundle.as_ptr(), NAKURU_BALANCED) };
+    let recognizer = unsafe { create(bundle.as_ptr(), speed) };
     if recognizer.is_null() {
         return Err(failure());
     }

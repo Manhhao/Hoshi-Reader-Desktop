@@ -104,6 +104,7 @@ pub async fn sasayaki_transcribe(
     app: AppHandle,
     id: String,
     path: String,
+    speed: i32,
     on_progress: Channel<Progress>,
 ) -> Result<(), String> {
     let cancel = CancellationToken::new();
@@ -150,7 +151,7 @@ pub async fn sasayaki_transcribe(
     });
     if !transcript.is_complete() {
         let (sender, mut events) = mpsc::unbounded_channel();
-        backend::start(&app, audio, transcript.through, sender, cancel)?;
+        backend::start(&app, audio, transcript.through, speed, sender, cancel)?;
 
         let start = transcript.through;
         let mut first_result = None;
