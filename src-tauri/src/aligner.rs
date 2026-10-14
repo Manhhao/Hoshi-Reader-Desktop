@@ -152,8 +152,8 @@ fn assign(
     let (removed, inserted) = difference(spoken, written);
 
     let mut offset = 0;
-    for index in 0..removed.len() {
-        if !removed[index] {
+    for (index, &removed) in removed.iter().enumerate() {
+        if !removed {
             while offset < inserted.len() && inserted[offset] {
                 offset += 1;
             }
@@ -165,7 +165,7 @@ fn assign(
         }
 
         let substitution = offset < inserted.len() && inserted[offset];
-        if !removed[index] || substitution {
+        if !removed || substitution {
             offset += 1;
         }
     }
