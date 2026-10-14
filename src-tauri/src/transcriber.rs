@@ -1,44 +1,23 @@
-use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri::ipc::Channel;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
-use crate::library;
-use crate::sasayaki::{self, SasayakiMatchData, Source};
+use crate::sasayaki::{self, SasayakiToken};
+use crate::{aligner, library};
+
+#[cfg(target_os = "macos")]
+#[path = "transcriber/macos.rs"]
+mod backend;
+#[cfg(windows)]
+#[path = "transcriber/nakuru.rs"]
+mod backend;
 
 const TRANSCRIPT_FILE: &str = "sasayaki_transcript.json";
-
-unsafe extern "C" {
-    fn hoshi_transcriber_status(context: *mut c_void, callback: extern "C" fn(*mut c_void, i32));
-    fn hoshi_audio_duration(path: *const c_char) -> f64;
-    fn hoshi_transcribe(
-        path: *const c_char,
-        from: f64,
-        context: *mut c_void,
-        on_download: extern "C" fn(*mut c_void, f64),
-        on_tokens: extern "C" fn(*mut c_void, *const c_char, f64),
-        on_finish: extern "C" fn(*mut c_void, *const c_char),
-    ) -> *mut c_void;
-    fn hoshi_transcribe_cancel(handle: *mut c_void);
-    fn hoshi_transcribe_release(handle: *mut c_void);
-    fn hoshi_align(
-        source: *const c_char,
-        tokens: *const c_char,
-        context: *mut c_void,
-        callback: extern "C" fn(*mut c_void, *const c_char),
-    );
-}
-
-#[derive(Serialize, Deserialize)]
-struct SasayakiToken {
-    text: String,
-    start: f64,
-    end: f64,
-}
 
 #[derive(Serialize, Deserialize)]
 struct SasayakiTranscript {
@@ -62,6 +41,9 @@ impl SasayakiTranscript {
 #[derive(Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum Progress {
+    #[cfg(windows)]
+    Preparing,
+    #[cfg(target_os = "macos")]
     Downloading {
         fraction: f64,
     },
@@ -74,6 +56,7 @@ pub enum Progress {
 }
 
 enum Event {
+    #[cfg(target_os = "macos")]
     Download(f64),
     Tokens(Vec<SasayakiToken>, f64),
     Finish(Option<String>),
@@ -81,74 +64,21 @@ enum Event {
 
 type Events = mpsc::UnboundedSender<Event>;
 
-struct Transcription(*mut c_void);
+static RUNNING: Mutex<Option<CancellationToken>> = Mutex::new(None);
 
-unsafe impl Send for Transcription {}
+struct Job;
 
-impl Drop for Transcription {
+impl Drop for Job {
     fn drop(&mut self) {
-        unsafe { hoshi_transcribe_release(self.0) }
+        if let Some(cancel) = RUNNING.lock().unwrap().take() {
+            cancel.cancel();
+        }
     }
-}
-
-static RUNNING: Mutex<Option<Transcription>> = Mutex::new(None);
-
-extern "C" fn on_status(context: *mut c_void, status: i32) {
-    let sender = unsafe { Box::from_raw(context.cast::<oneshot::Sender<i32>>()) };
-    sender.send(status).ok();
-}
-
-extern "C" fn on_download(context: *mut c_void, fraction: f64) {
-    let events = unsafe { &*context.cast::<Events>() };
-    events.send(Event::Download(fraction)).ok();
-}
-
-extern "C" fn on_tokens(context: *mut c_void, json: *const c_char, through: f64) {
-    let events = unsafe { &*context.cast::<Events>() };
-    let tokens = serde_json::from_slice(unsafe { CStr::from_ptr(json) }.to_bytes()).unwrap();
-    events.send(Event::Tokens(tokens, through)).ok();
-}
-
-extern "C" fn on_finish(context: *mut c_void, error: *const c_char) {
-    let events = unsafe { Box::from_raw(context.cast::<Events>()) };
-    let error = (!error.is_null()).then(|| {
-        unsafe { CStr::from_ptr(error) }
-            .to_string_lossy()
-            .into_owned()
-    });
-    events.send(Event::Finish(error)).ok();
-}
-
-extern "C" fn on_aligned(context: *mut c_void, json: *const c_char) {
-    let result = unsafe { &mut *context.cast::<Option<SasayakiMatchData>>() };
-    *result = Some(serde_json::from_slice(unsafe { CStr::from_ptr(json) }.to_bytes()).unwrap());
-}
-
-fn align(source: &Source, tokens: &[SasayakiToken]) -> SasayakiMatchData {
-    let source = CString::new(serde_json::to_vec(source).unwrap()).unwrap();
-    let tokens = CString::new(serde_json::to_vec(tokens).unwrap()).unwrap();
-    let mut result = None;
-    unsafe {
-        hoshi_align(
-            source.as_ptr(),
-            tokens.as_ptr(),
-            (&raw mut result).cast(),
-            on_aligned,
-        )
-    };
-    result.unwrap()
 }
 
 #[tauri::command]
-pub async fn sasayaki_transcriber_status() -> &'static str {
-    let (sender, receiver) = oneshot::channel();
-    unsafe { hoshi_transcriber_status(Box::into_raw(Box::new(sender)).cast(), on_status) };
-    match receiver.await.unwrap() {
-        0 => "available",
-        1 => "requiresMacos26",
-        2 => "unavailable",
-        _ => "localeUnavailable",
-    }
+pub async fn sasayaki_transcriber_status(app: AppHandle) -> &'static str {
+    backend::status(app).await
 }
 
 #[tauri::command(async)]
@@ -164,8 +94,8 @@ pub fn sasayaki_clear_transcript(app: AppHandle, id: String) -> Result<(), Strin
 
 #[tauri::command]
 pub fn sasayaki_pause_transcription() {
-    if let Some(transcription) = RUNNING.lock().unwrap().as_ref() {
-        unsafe { hoshi_transcribe_cancel(transcription.0) }
+    if let Some(cancel) = RUNNING.lock().unwrap().as_ref() {
+        cancel.cancel();
     }
 }
 
@@ -176,12 +106,29 @@ pub async fn sasayaki_transcribe(
     path: String,
     on_progress: Channel<Progress>,
 ) -> Result<(), String> {
-    let root = library::book_dir(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;
-    let audio = CString::new(path.as_str()).unwrap();
-    let duration = unsafe { hoshi_audio_duration(audio.as_ptr()) };
-    if duration < 0.0 {
-        return Err(format!("Could not read {path}"));
+    let cancel = CancellationToken::new();
+    {
+        let mut running = RUNNING.lock().unwrap();
+        if running.is_some() {
+            return Ok(());
+        }
+        *running = Some(cancel.clone());
     }
+    let _job = Job;
+    let root = library::book_dir(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;
+    let progress = |progress: Progress| on_progress.send(progress).ok();
+    #[cfg(windows)]
+    progress(Progress::Preparing);
+    let audio_path = path.clone();
+    let preparation = cancel.clone();
+    let audio =
+        tauri::async_runtime::spawn_blocking(move || backend::prepare(&audio_path, &preparation))
+            .await
+            .unwrap()?;
+    if cancel.is_cancelled() {
+        return Ok(());
+    }
+    let duration = audio.duration;
 
     let mut playback = sasayaki::load_sasayaki_playback(&root).unwrap_or_default();
     playback.audio_path = Some(path);
@@ -196,7 +143,6 @@ pub async fn sasayaki_transcribe(
             tokens: Vec::new(),
         });
 
-    let progress = |progress: Progress| on_progress.send(progress).ok();
     progress(Progress::Transcribing {
         through: transcript.through,
         duration,
@@ -204,18 +150,7 @@ pub async fn sasayaki_transcribe(
     });
     if !transcript.is_complete() {
         let (sender, mut events) = mpsc::unbounded_channel();
-        let context = Box::into_raw(Box::new(sender)).cast();
-        let handle = unsafe {
-            hoshi_transcribe(
-                audio.as_ptr(),
-                transcript.through,
-                context,
-                on_download,
-                on_tokens,
-                on_finish,
-            )
-        };
-        *RUNNING.lock().unwrap() = Some(Transcription(handle));
+        backend::start(&app, audio, transcript.through, sender, cancel)?;
 
         let start = transcript.through;
         let mut first_result = None;
@@ -223,6 +158,7 @@ pub async fn sasayaki_transcribe(
         let mut error = None;
         while let Some(event) = events.recv().await {
             match event {
+                #[cfg(target_os = "macos")]
                 Event::Download(fraction) => {
                     progress(Progress::Downloading { fraction });
                 }
@@ -249,7 +185,6 @@ pub async fn sasayaki_transcribe(
                 Event::Finish(result) => error = result,
             }
         }
-        RUNNING.lock().unwrap().take();
         if let Some(error) = error {
             return Err(error);
         }
@@ -263,7 +198,7 @@ pub async fn sasayaki_transcribe(
     progress(Progress::Aligning);
     let book = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        sasayaki::build_source(&book, &id).map(|source| align(&source, &transcript.tokens))
+        sasayaki::build_source(&book, &id).map(|source| aligner::align(&source, &transcript.tokens))
     })
     .await
     .unwrap()?;

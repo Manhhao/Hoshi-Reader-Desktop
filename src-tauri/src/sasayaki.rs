@@ -38,6 +38,13 @@ pub struct SasayakiMatch {
     pub length: usize,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SasayakiToken {
+    pub text: String,
+    pub start: f64,
+    pub end: f64,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SasayakiImage {
@@ -120,7 +127,7 @@ fn parse_cues(data: &[u8]) -> Vec<SasayakiCue> {
         .collect()
 }
 
-fn find_text(source: &[char], text: &[char], start: usize, end: usize) -> Option<usize> {
+pub(crate) fn find_text(source: &[char], text: &[char], start: usize, end: usize) -> Option<usize> {
     if end < text.len() {
         return None;
     }
@@ -134,31 +141,27 @@ fn find_unique(source: &[char], text: &[char], start: usize) -> Option<usize> {
         .then_some(index)
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Chapter {
-    chapter_index: usize,
-    start: usize,
-    length: usize,
+    pub(crate) chapter_index: usize,
+    pub(crate) start: usize,
+    pub(crate) length: usize,
 }
 
 impl Chapter {
-    fn end(&self) -> usize {
+    pub(crate) fn end(&self) -> usize {
         self.start + self.length
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Source {
-    text: Vec<char>,
-    sentence_ends: Vec<bool>,
-    segment_ends: Vec<bool>,
-    chapters: Vec<Chapter>,
-    images: Vec<SasayakiImage>,
+    pub(crate) text: Vec<char>,
+    pub(crate) sentence_ends: Vec<bool>,
+    pub(crate) segment_ends: Vec<bool>,
+    pub(crate) chapters: Vec<Chapter>,
+    pub(crate) images: Vec<SasayakiImage>,
 }
 
-static RE_CHARACTER: LazyLock<Regex> =
+pub(crate) static RE_CHARACTER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("[{}]", library::CHARACTER_CLASS)).unwrap());
 static RE_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)</?(?:p|div|h[1-6]|li|ul|ol|blockquote|section|article|table|tr|td|th|hr|br|img|image)\b[^>]*>").unwrap()
@@ -435,12 +438,6 @@ pub fn sasayaki_save_playback(app: AppHandle, id: String, mut playback: Sasayaki
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-#[tauri::command]
-pub fn sasayaki_transcriber_status() -> &'static str {
-    "unsupported"
-}
-
 #[tauri::command(async)]
 pub fn sasayaki_audio_chapters(app: AppHandle, id: String) -> Vec<AudioChapter> {
     audio_path(&app, &id)
@@ -504,7 +501,7 @@ pub(crate) fn audio_path(app: &AppHandle, id: &str) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-fn audio_mime(path: &std::path::Path) -> &'static str {
+pub(crate) fn audio_mime(path: &std::path::Path) -> &'static str {
     match path
         .extension()
         .and_then(|ext| ext.to_str())

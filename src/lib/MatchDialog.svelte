@@ -4,6 +4,7 @@
   import type { BookInfo, SasayakiMatchData, SasayakiPlayback } from "./types";
 
   type Progress =
+    | { state: "preparing" }
     | { state: "downloading"; fraction: number }
     | { state: "transcribing"; through: number; duration: number; remaining: number | null }
     | { state: "aligning" };
@@ -13,7 +14,7 @@
 
   let dialog = $state<HTMLDialogElement>();
   let bookId = $state("");
-  let canTranscribe = $state<boolean>();
+  let transcriberStatus = $state("");
   let useAudio = $state(false);
   let subtitleFile = $state<string | null>(null);
   let audioFile = $state<string | null>(null);
@@ -24,6 +25,7 @@
   let transcript = $state<Transcript | null>(null);
   let matchError = $state("");
 
+  const canTranscribe = $derived(transcriberStatus === "available");
   const file = $derived(useAudio ? audioFile : subtitleFile);
   const resumable = $derived(
     useAudio &&
@@ -39,7 +41,7 @@
       subtitleFile = null;
       matchError = "";
     }
-    canTranscribe ??= (await invoke<string>("sasayaki_transcriber_status")) === "available";
+    transcriberStatus = await invoke<string>("sasayaki_transcriber_status");
     if (canTranscribe) {
       const playback = await invoke<SasayakiPlayback | null>("sasayaki_load_playback", { id });
       audioFile = playback?.audioPath ?? null;
@@ -102,6 +104,8 @@
 
   function progressLabel(progress: Progress | null): string {
     switch (progress?.state) {
+      case "preparing":
+        return "Preparing audio…";
       case "downloading":
         return `Downloading model… ${Math.floor(progress.fraction * 100)}%`;
       case "transcribing":
@@ -149,6 +153,12 @@
           Transcription
         </button>
       </div>
+
+      {#if transcriberStatus === "nakuruUnavailable"}
+        <span class="text-sm text-base-content/60">
+          Install Nakuru in the app data folder's Nakuru directory to enable transcription.
+        </span>
+      {/if}
 
       <div class="flex items-center justify-between gap-3">
         <span class="min-w-0 truncate text-sm">{file ? fileName(file) : "No file selected"}</span>
