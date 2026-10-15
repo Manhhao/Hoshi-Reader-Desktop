@@ -4,7 +4,7 @@ use crate::sasayaki::{
     Chapter, RE_CHARACTER, SasayakiMatch, SasayakiMatchData, SasayakiToken, Source, find_text,
 };
 
-const PROBE_LENGTH: usize = 12;
+const PROBE_LENGTH: usize = 16;
 const PROBE_STRIDE: usize = 100;
 const MAX_BLOCK: usize = 2000;
 const MAX_SECONDS_PER_CHARACTER: f64 = 0.7;
@@ -122,6 +122,9 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
             let Some(found) = find_text(book, probe, cursor, limit) else {
                 continue;
             };
+            if find_text(book, probe, found + 1, limit).is_some() {
+                continue;
+            }
 
             cursor = found + PROBE_LENGTH;
             let previous = anchors.last().unwrap();
@@ -132,6 +135,36 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
                 });
             }
         }
+    }
+    for chapter in chapters
+        .iter()
+        .filter(|chapter| chapter.length >= PROBE_LENGTH)
+    {
+        let probe = &book[chapter.start..chapter.start + PROBE_LENGTH];
+        let after = anchors
+            .iter()
+            .position(|anchor| anchor.book > chapter.start)
+            .unwrap_or(anchors.len());
+        if anchors[after - 1].book == chapter.start {
+            continue;
+        }
+        let low = anchors[after - 1].speech + 1;
+        let high = anchors
+            .get(after)
+            .map_or(speech.characters.len(), |anchor| anchor.speech);
+        let Some(found) = find_text(&speech.characters, probe, low, high) else {
+            continue;
+        };
+        if find_text(&speech.characters, probe, found + 1, high).is_some() {
+            continue;
+        }
+        anchors.insert(
+            after,
+            Anchor {
+                speech: found,
+                book: chapter.start,
+            },
+        );
     }
     anchors.push(Anchor {
         speech: speech.characters.len(),
@@ -325,10 +358,41 @@ fn time(
     from -= START_LEAD;
 
     if !within_budget(from, to, upper - lower + 1) {
-        return interpolate(start, index, chapter, times, previous);
+        return trim(start, index, &timed, times)
+            .or_else(|| interpolate(start, index, chapter, times, previous));
     }
 
     Some(Span {
+        from,
+        to,
+        lower,
+        upper,
+    })
+}
+
+fn trim(start: usize, index: usize, timed: &[usize], times: &[Option<Timing>]) -> Option<Span> {
+    let at = |position: usize| times[timed[position]].unwrap();
+    let (mut first, mut last) = (0, timed.len() - 1);
+    while first < last && at(first + 1).start - at(first).end > LEADING_GAP {
+        first += 1;
+    }
+    while last > first && at(last).start - at(last - 1).end > LEADING_GAP {
+        last -= 1;
+    }
+
+    let lower = if timed[first] - start <= MAX_EDGE {
+        start
+    } else {
+        timed[first]
+    };
+    let upper = if index - timed[last] <= MAX_EDGE {
+        index
+    } else {
+        timed[last]
+    };
+    let from = at(first).start.max(at(first).end - CHARACTER_SPAN) - START_LEAD;
+    let to = at(last).end;
+    within_budget(from, to, upper - lower + 1).then_some(Span {
         from,
         to,
         lower,
