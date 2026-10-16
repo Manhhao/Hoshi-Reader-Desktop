@@ -80,13 +80,13 @@ pub fn start(
     app: &AppHandle,
     audio: Audio,
     from: f64,
-    speed: i32,
+    performance: i32,
     events: Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
     let root = locate(app).ok_or("Nakuru is not installed")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let result = with_media_foundation(|| Ok(run(&root, audio, from, speed, &events, cancel)))
+        let result = with_media_foundation(|| Ok(run(&root, audio, from, performance, &events, cancel)))
             .unwrap_or_else(|error| Err(error.to_string()));
         events.send(Event::Finish(result.err())).ok();
     });
@@ -175,7 +175,7 @@ fn run(
     root: &Path,
     audio: Audio,
     from: f64,
-    speed: i32,
+    performance: i32,
     events: &Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
@@ -209,7 +209,7 @@ fn run(
     if cancel.is_cancelled() {
         return Ok(());
     }
-    let recognizer = unsafe { create(pack.as_ptr(), speed) };
+    let recognizer = unsafe { create(pack.as_ptr(), performance) };
     if recognizer.is_null() {
         return Err(failure());
     }
@@ -231,7 +231,7 @@ fn run(
             Ok(())
         });
         if let Err(error) = result {
-            sender.send(Err(error.to_string())).ok();
+            sender.send(Err(format!("The audio file could not be read: {error}"))).ok();
         }
     });
     let job = Recognition {

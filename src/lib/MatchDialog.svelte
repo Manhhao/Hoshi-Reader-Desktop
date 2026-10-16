@@ -16,7 +16,7 @@
   let bookId = $state("");
   let transcriberStatus = $state("");
   let useAudio = $state(false);
-  let speed = $state(1);
+  let performance = $state(1);
   let subtitleFile = $state<string | null>(null);
   let audioFile = $state<string | null>(null);
   let isMatching = $state(false);
@@ -72,7 +72,7 @@
     matchError = "";
     const onProgress = new Channel<Progress>((message) => (progress = message));
     try {
-      if (useAudio) await invoke("sasayaki_transcribe", { id: bookId, path: file, speed, onProgress });
+      if (useAudio) await invoke("sasayaki_transcribe", { id: bookId, path: file, performance, onProgress });
       else await invoke("sasayaki_match", { id: bookId, path: file });
       onMatched();
     } catch (e) {
@@ -161,13 +161,13 @@
 
       {#if isWindows && useAudio}
         <div class="flex items-center justify-between gap-3">
-          <span class="text-sm">Speed</span>
+          <span class="text-sm">Performance</span>
           <div class="join">
-            {#each ["Light", "Balanced", "Fast"] as label, index (label)}
+            {#each ["Low", "Balanced", "Maximum"] as label, index (label)}
               <button
-                class="btn join-item btn-sm {speed === index ? 'btn-active' : ''}"
+                class="btn join-item btn-sm {performance === index ? 'btn-active' : ''}"
                 disabled={isMatching}
-                onclick={() => (speed = index)}
+                onclick={() => (performance = index)}
               >
                 {label}
               </button>

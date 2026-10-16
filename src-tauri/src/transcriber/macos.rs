@@ -49,7 +49,7 @@ pub fn start(
     _app: &AppHandle,
     audio: Audio,
     from: f64,
-    _speed: i32,
+    _performance: i32,
     events: Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
