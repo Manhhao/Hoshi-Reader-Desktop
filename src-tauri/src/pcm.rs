@@ -176,6 +176,7 @@ pub struct MonoReader {
     samples: Vec<i16>,
     start: usize,
     ended: bool,
+    anchored: bool,
 }
 
 #[cfg(windows)]
@@ -205,6 +206,7 @@ impl MonoReader {
                 samples: Vec::new(),
                 start: 0,
                 ended: false,
+                anchored: false,
             })
         }
     }
@@ -233,7 +235,8 @@ impl MonoReader {
             let Some(sample) = sample else {
                 continue;
             };
-            if self.samples.is_empty() {
+            if !self.anchored {
+                self.anchored = true;
                 self.start = (timestamp as f64 * Self::RATE as f64 / 1e7)
                     .round()
                     .max(0.0) as usize;

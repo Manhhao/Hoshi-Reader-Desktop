@@ -1,6 +1,8 @@
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::time::Duration;
 
 use libloading::os::windows::Library;
 use tauri::{AppHandle, Manager};
@@ -91,8 +93,14 @@ pub fn start(
     Ok(())
 }
 
+struct Buffer {
+    blocks: Receiver<Result<Vec<f32>, String>>,
+    samples: Vec<f32>,
+    start: usize,
+}
+
 struct Recognition {
-    audio: Mutex<MonoReader>,
+    audio: Mutex<Buffer>,
     error: Mutex<Option<String>>,
     offset: usize,
     from: f64,
@@ -111,9 +119,29 @@ unsafe extern "C" fn read(
         return 0;
     }
     let samples = unsafe { std::slice::from_raw_parts_mut(pcm16, count) };
-    if let Err(error) = job.audio.lock().unwrap().read(job.offset + offset, samples) {
-        *job.error.lock().unwrap() = Some(error.to_string());
-        return 0;
+    let index = job.offset + offset;
+    let mut audio = job.audio.lock().unwrap();
+    let skip = index.saturating_sub(audio.start).min(audio.samples.len());
+    audio.samples.drain(..skip);
+    audio.start += skip;
+    while audio.start + audio.samples.len() < index + count {
+        match audio.blocks.recv_timeout(Duration::from_millis(100)) {
+            Ok(Ok(block)) => audio.samples.extend(block),
+            Ok(Err(error)) => {
+                *job.error.lock().unwrap() = Some(error);
+                return 0;
+            }
+            Err(RecvTimeoutError::Timeout) if job.cancel.is_cancelled() => return 0,
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    for (position, value) in (index..).zip(samples.iter_mut()) {
+        *value = audio
+            .samples
+            .get(position - audio.start)
+            .copied()
+            .unwrap_or(0.0);
     }
     1
 }
@@ -188,10 +216,30 @@ fn run(
     let count = (audio.duration * MonoReader::RATE as f64).round() as usize;
     let offset = ((from * MonoReader::RATE as f64).round() as usize).min(count);
     let from = offset as f64 / MonoReader::RATE as f64;
-    let reader =
-        MonoReader::open(&audio.path, audio.mime, from).map_err(|error| error.to_string())?;
+    let (sender, blocks) = sync_channel(120);
+    let (path, mime) = (audio.path.clone(), audio.mime);
+    std::thread::spawn(move || {
+        let result = with_media_foundation(|| {
+            let mut reader = MonoReader::open(&path, mime, from)?;
+            for position in (offset..count).step_by(MonoReader::RATE) {
+                let mut block = vec![0.0; MonoReader::RATE.min(count - position)];
+                reader.read(position, &mut block)?;
+                if sender.send(Ok(block)).is_err() {
+                    break;
+                }
+            }
+            Ok(())
+        });
+        if let Err(error) = result {
+            sender.send(Err(error.to_string())).ok();
+        }
+    });
     let job = Recognition {
-        audio: Mutex::new(reader),
+        audio: Mutex::new(Buffer {
+            blocks,
+            samples: Vec::new(),
+            start: offset,
+        }),
         error: Mutex::new(None),
         offset,
         from,
