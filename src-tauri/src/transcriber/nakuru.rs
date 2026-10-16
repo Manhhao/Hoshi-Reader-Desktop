@@ -44,7 +44,7 @@ fn locate(app: &AppHandle) -> Option<PathBuf> {
         Some(root) => PathBuf::from(root),
         None => app.path().app_data_dir().ok()?.join("Nakuru"),
     };
-    (root.join("runtime/nakuru.dll").is_file() && root.join("bundle/manifest.json").is_file())
+    (root.join("runtime/nakuru.dll").is_file() && root.join("nakuru.pack").is_file())
         .then_some(root)
 }
 
@@ -151,15 +151,7 @@ fn run(
     events: &Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
-    let runtime_path = root.join("runtime/onnxruntime.dll");
     let library_path = root.join("runtime/nakuru.dll");
-    let _runtime = unsafe {
-        Library::load_with_flags(
-            &runtime_path,
-            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
-        )
-    }
-    .map_err(|error| format!("Could not load {}: {error}", runtime_path.display()))?;
     let library = unsafe {
         Library::load_with_flags(
             &library_path,
@@ -184,12 +176,12 @@ fn run(
             .to_string_lossy()
             .into_owned()
     };
-    let bundle = CString::new(root.join("bundle").to_string_lossy().as_bytes())
+    let pack = CString::new(root.join("nakuru.pack").to_string_lossy().as_bytes())
         .map_err(|error| error.to_string())?;
     if cancel.is_cancelled() {
         return Ok(());
     }
-    let recognizer = unsafe { create(bundle.as_ptr(), speed) };
+    let recognizer = unsafe { create(pack.as_ptr(), speed) };
     if recognizer.is_null() {
         return Err(failure());
     }
