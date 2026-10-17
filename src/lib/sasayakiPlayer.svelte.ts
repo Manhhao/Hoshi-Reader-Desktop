@@ -275,6 +275,13 @@ export class SasayakiPlayer {
     this.seek(previous + this.delay);
   }
 
+  repeatCue() {
+    this.stopPlaybackTime = null;
+    const cue = this.currentCue ?? this.timeline.cueBefore(this.currentTime - this.delay);
+    if (!cue) return;
+    this.seek(cue.startTime + this.delay, true);
+  }
+
   skip(forward: boolean) {
     this.stopPlaybackTime = null;
     if (forward) {

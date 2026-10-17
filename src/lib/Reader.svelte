@@ -1293,6 +1293,7 @@
     else if (key === hotkeyConfig.sasayakiPlayback) toggleSasayakiPlayback();
     else if (key === hotkeyConfig.sasayakiPreviousCue) sasayaki?.prevCue();
     else if (key === hotkeyConfig.sasayakiNextCue) sasayaki?.nextCue();
+    else if (key === hotkeyConfig.sasayakiRepeatCue) sasayaki?.repeatCue();
   }
 
   function onMessage(e: MessageEvent) {

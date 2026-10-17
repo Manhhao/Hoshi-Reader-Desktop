@@ -11,6 +11,7 @@ export type HotkeyConfig = {
   disableReaderWheel: boolean;
   sasayakiPreviousCue: string;
   sasayakiNextCue: string;
+  sasayakiRepeatCue: string;
   sasayakiPlayback: string;
   toggleTracking: string;
   previousPage: string;
@@ -28,6 +29,7 @@ const defaults: HotkeyConfig = {
   disableReaderWheel: false,
   sasayakiPreviousCue: "[",
   sasayakiNextCue: "]",
+  sasayakiRepeatCue: "'",
   sasayakiPlayback: " ",
   toggleTracking: "p",
   previousPage: "ArrowLeft",
@@ -39,6 +41,7 @@ const defaults: HotkeyConfig = {
 export const readerHotkeys = [
   { key: "sasayakiPreviousCue", label: "Previous Cue", section: "Sasayaki" },
   { key: "sasayakiNextCue", label: "Next Cue", section: "Sasayaki" },
+  { key: "sasayakiRepeatCue", label: "Repeat Cue", section: "Sasayaki" },
   { key: "sasayakiPlayback", label: "Play / Pause", section: "Sasayaki" },
   { key: "toggleTracking", label: "Pause / Resume Statistics", section: "Reader" },
   { key: "previousPage", label: "Previous Page", section: "Reader" },
