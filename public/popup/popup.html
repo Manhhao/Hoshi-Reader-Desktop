@@ -475,6 +475,8 @@
           }
         } else if (m?.hoshi === "play-audio") {
           playEntryAudio(m.entryIndex, m.sourceIndex);
+        } else if (m?.hoshi === "entry-action") {
+          runEntryAction(m.action, m.slotIndex);
         } else if (m?.hoshi === "highlight") {
           window.hoshiSelection?.highlightSelection(m.count);
         } else if (m?.hoshi === "clear-selection") {

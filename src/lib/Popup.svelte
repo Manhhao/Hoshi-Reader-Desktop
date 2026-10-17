@@ -98,6 +98,10 @@
     iframeEl?.contentWindow?.postMessage(msg, "*");
   }
 
+  export function entryAction(action: "mine" | "audio", slotIndex = 0) {
+    send({ hoshi: "entry-action", action, slotIndex });
+  }
+
   function popupConfig() {
     return {
       scale,

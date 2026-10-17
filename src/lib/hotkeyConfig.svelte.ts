@@ -14,6 +14,10 @@ export type HotkeyConfig = {
   sasayakiRepeatCue: string;
   sasayakiPlayback: string;
   toggleTracking: string;
+  mineEntry1: string;
+  mineEntry2: string;
+  mineEntry3: string;
+  playEntryAudio: string;
   previousPage: string;
   nextPage: string;
   reversePageVertical: boolean;
@@ -32,6 +36,10 @@ const defaults: HotkeyConfig = {
   sasayakiRepeatCue: "'",
   sasayakiPlayback: " ",
   toggleTracking: "p",
+  mineEntry1: "",
+  mineEntry2: "",
+  mineEntry3: "",
+  playEntryAudio: "",
   previousPage: "ArrowLeft",
   nextPage: "ArrowRight",
   reversePageVertical: true,
@@ -46,6 +54,10 @@ export const readerHotkeys = [
   { key: "toggleTracking", label: "Pause / Resume Statistics", section: "Reader" },
   { key: "previousPage", label: "Previous Page", section: "Reader" },
   { key: "nextPage", label: "Next Page", section: "Reader" },
+  { key: "mineEntry1", label: "Mine Format 1", section: "Popup" },
+  { key: "mineEntry2", label: "Mine Format 2", section: "Popup" },
+  { key: "mineEntry3", label: "Mine Format 3", section: "Popup" },
+  { key: "playEntryAudio", label: "Play Audio", section: "Popup" },
 ] as const;
 
 const store = persisted<HotkeyConfig>("hotkeys.config", defaults);

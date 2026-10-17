@@ -1612,6 +1612,18 @@ async function mineEntryAtIndex(entryIndex, slotIndex) {
     if (generation === renderGeneration) { await checkDuplicates(entryIndex); }
 }
 
+let hoveredEntry = null;
+document.addEventListener('mouseover', e => {
+    hoveredEntry = e.target.closest?.('.entry') ?? hoveredEntry;
+});
+
+function runEntryAction(action, slotIndex) {
+    const entryIndex = hoveredEntry?.isConnected ? Number(hoveredEntry.dataset.entryIndex) : 0;
+    if (action === 'audio') { playEntryAudio(entryIndex); return; }
+    const slot = getButtonSlot('mine', entryIndex, slotIndex);
+    if (slot && slot.dataset.enabled !== 'false') { mineEntryAtIndex(entryIndex, slotIndex); }
+}
+
 function showNotesAtIndex(entryIndex, slotIndex) {
     const entry = window.lookupEntries?.[entryIndex];
     if (!entry) { return; }
@@ -1981,7 +1993,7 @@ window.renderPopup = function() {
                 container.appendChild(document.createElement('hr'));
             }
             
-            const entryDiv = el('div', { className: 'entry' });
+            const entryDiv = el('div', { className: 'entry', 'data-entry-index': idx });
             entryDiv.appendChild(createEntryHeader(entry, idx));
             
             if (window.audioEnableAutoplay && window.audioSources?.length && idx === 0) {

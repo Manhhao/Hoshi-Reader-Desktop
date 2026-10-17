@@ -439,6 +439,7 @@
   let marker = $state<{ x: number; y: number; inset: number } | null>(null);
   let lookupSeq = 0;
   let popups = $state<PopupInstance[]>([]);
+  let popupViews = $state<Popup[]>([]);
   let popupAnki = $state<PopupAnkiConfig | null>(null);
   const hider = cursorExitHider(closePopups);
 
@@ -1272,7 +1273,12 @@
 
   const readerShortcutKeys = $derived(
     readerHotkeys
-      .filter((binding) => binding.key === "toggleTracking" || (binding.section === "Sasayaki" && sasayaki?.hasAudio))
+      .filter(
+        (binding) =>
+          binding.key === "toggleTracking" ||
+          (binding.section === "Sasayaki" && sasayaki?.hasAudio) ||
+          (binding.section === "Popup" && popups.length > 0),
+      )
       .map((binding) => hotkeyConfig[binding.key])
       .filter(Boolean),
   );
@@ -1294,6 +1300,10 @@
     else if (key === hotkeyConfig.sasayakiPreviousCue) sasayaki?.prevCue();
     else if (key === hotkeyConfig.sasayakiNextCue) sasayaki?.nextCue();
     else if (key === hotkeyConfig.sasayakiRepeatCue) sasayaki?.repeatCue();
+    else if (key === hotkeyConfig.mineEntry1) popupViews[popups.length - 1]?.entryAction("mine", 0);
+    else if (key === hotkeyConfig.mineEntry2) popupViews[popups.length - 1]?.entryAction("mine", 1);
+    else if (key === hotkeyConfig.mineEntry3) popupViews[popups.length - 1]?.entryAction("mine", 2);
+    else if (key === hotkeyConfig.playEntryAudio) popupViews[popups.length - 1]?.entryAction("audio");
   }
 
   function onMessage(e: MessageEvent) {
@@ -2182,6 +2192,7 @@
 
   {#each popups as popup, i (popup.id)}
     <Popup
+      bind:this={popupViews[i]}
       entries={popup.entries}
       styles={popup.styles}
       fonts={importedFonts}

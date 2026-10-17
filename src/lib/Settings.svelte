@@ -1368,7 +1368,7 @@
             />
           {/if}
         </SettingsSection>
-        {#each ["Sasayaki", "Reader"] as section}
+        {#each ["Sasayaki", "Reader", "Popup"] as section}
           <SettingsSection title={section}>
             {#if section === "Reader"}
               <SettingToggle
