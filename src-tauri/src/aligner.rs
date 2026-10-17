@@ -16,11 +16,14 @@ const END_PADDING: f64 = 0.3;
 const LEADING_GAP: f64 = 0.5;
 const CHARACTER_SPAN: f64 = 0.15;
 const START_LEAD: f64 = 0.2;
+const EXACT_WINDOW: usize = 20;
+const EXACT_SHARE: usize = 4;
 
 #[derive(Clone, Copy)]
 struct Timing {
     start: f64,
     end: f64,
+    exact: bool,
 }
 
 struct Speech {
@@ -39,6 +42,7 @@ impl Speech {
                 timings.push(Timing {
                     start: token.start,
                     end: token.end,
+                    exact: false,
                 });
             }
         }
@@ -82,6 +86,13 @@ pub fn align(source: &Source, tokens: &[SasayakiToken]) -> SasayakiMatchData {
             book: next.book.min(anchor.book + MAX_BLOCK),
         };
         assign(&speech, &book, anchor, bounded, &mut times);
+        let tail = Anchor {
+            speech: next.speech.saturating_sub(MAX_BLOCK).max(anchor.speech),
+            book: next.book.saturating_sub(MAX_BLOCK).max(anchor.book),
+        };
+        if next.book < book.len() && (tail.speech > anchor.speech || tail.book > anchor.book) {
+            assign(&speech, &book, tail, next, &mut times);
+        }
     }
 
     cut(source, &times)
@@ -119,9 +130,12 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
     if let Some(last) = speech.characters.len().checked_sub(PROBE_LENGTH) {
         for index in (0..=last).step_by(PROBE_STRIDE) {
             let probe = &speech.characters[index..index + PROBE_LENGTH];
-            let limit = book
-                .len()
-                .min(cursor + MAX_BLOCK + PROBE_LENGTH + index - hit);
+            let limit = if cursor == 0 {
+                book.len()
+            } else {
+                book.len()
+                    .min(cursor + MAX_BLOCK + PROBE_LENGTH + index - hit)
+            };
             let Some(found) = find_text(book, probe, cursor, limit) else {
                 continue;
             };
@@ -198,7 +212,10 @@ fn assign(
 
         let target = anchor.book + offset.min(written.len() - 1);
         if times[target].is_none() {
-            times[target] = Some(speech.timings[anchor.speech + index]);
+            times[target] = Some(Timing {
+                exact: !removed,
+                ..speech.timings[anchor.speech + index]
+            });
         }
 
         let substitution = offset < inserted.len() && inserted[offset];
@@ -336,6 +353,14 @@ fn time(
     times: &[Option<Timing>],
     previous: Option<f64>,
 ) -> Option<Span> {
+    let low = start.saturating_sub(EXACT_WINDOW).max(chapter.start);
+    let high = (index + EXACT_WINDOW).min(chapter.end() - 1);
+    let exact = (low..=high)
+        .filter(|&i| times[i].is_some_and(|timing| timing.exact))
+        .count();
+    if exact * EXACT_SHARE < high - low + 1 {
+        return None;
+    }
     let timed: Vec<usize> = (start..=index).filter(|&i| times[i].is_some()).collect();
     let (Some(&first), Some(&last)) = (timed.first(), timed.last()) else {
         return interpolate(start, index, chapter, times, previous);
