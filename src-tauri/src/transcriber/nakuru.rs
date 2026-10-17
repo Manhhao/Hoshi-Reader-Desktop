@@ -5,9 +5,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use libloading::os::windows::Library;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
@@ -70,6 +71,38 @@ const ASSETS: [Asset; 2] = [
     },
 ];
 
+#[derive(Serialize, Deserialize, PartialEq)]
+struct Installed {
+    sha256: String,
+    bytes: u64,
+    modified: SystemTime,
+}
+
+impl Installed {
+    fn stamp(path: &Path, sha256: &str) -> Option<Self> {
+        let metadata = fs::metadata(path).ok()?;
+        Some(Installed {
+            sha256: sha256.into(),
+            bytes: metadata.len(),
+            modified: metadata.modified().ok()?,
+        })
+    }
+}
+
+fn hex(hasher: Sha256) -> String {
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn digest(path: &Path) -> Option<String> {
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut File::open(path).ok()?, &mut hasher).ok()?;
+    Some(hex(hasher))
+}
+
 fn supported() -> bool {
     #[cfg(target_arch = "x86_64")]
     return is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
@@ -99,14 +132,35 @@ async fn install(
         .map_err(|error| error.to_string())?
         .join("Nakuru");
     let marker = root.join("installed.json");
-    let mut installed: HashMap<String, String> = library::read_json(&marker).unwrap_or_default();
+    let mut installed: HashMap<String, Installed> = library::read_json(&marker).unwrap_or_default();
+    let mut verified = false;
     let pending: Vec<_> = ASSETS
         .iter()
         .filter(|asset| {
-            installed.get(asset.name).map(String::as_str) != Some(asset.sha256)
-                || !root.join(asset.name).is_file()
+            let path = root.join(asset.name);
+            let Some(current) = Installed::stamp(&path, asset.sha256) else {
+                return true;
+            };
+            if current.bytes != asset.bytes {
+                return true;
+            }
+            if installed
+                .get(asset.name)
+                .is_some_and(|entry| *entry == current)
+            {
+                return false;
+            }
+            if digest(&path).as_deref() != Some(asset.sha256) {
+                return true;
+            }
+            installed.insert(asset.name.into(), current);
+            verified = true;
+            false
         })
         .collect();
+    if verified {
+        library::write_json(&marker, &installed)?;
+    }
     if pending.is_empty() {
         return Ok(root);
     }
@@ -148,17 +202,14 @@ async fn install(
             }
         }
         drop(file);
-        let digest: String = hasher
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        if digest != asset.sha256 {
+        if hex(hasher) != asset.sha256 {
             fs::remove_file(&part).ok();
             return Err(format!("Downloaded {} failed verification", asset.name));
         }
         fs::rename(&part, root.join(asset.name)).map_err(|error| error.to_string())?;
-        installed.insert(asset.name.into(), asset.sha256.into());
+        let stamp = Installed::stamp(&root.join(asset.name), asset.sha256)
+            .ok_or_else(|| format!("Could not read {}", asset.name))?;
+        installed.insert(asset.name.into(), stamp);
         library::write_json(&marker, &installed)?;
     }
     Ok(root)
