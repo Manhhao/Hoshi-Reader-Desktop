@@ -1799,6 +1799,10 @@ function buildKanjiEntry(data) {
     header.appendChild(el('span', { className: 'kanji', textContent: data.character }));
     entry.appendChild(header);
     
+    const glossarySections = el('div', { className: 'glossary-sections' });
+    glossarySections.classList.toggle('single-section', data.entries.length === 1);
+    entry.appendChild(glossarySections);
+    
     data.entries.forEach(e => {
         const details = el('details', { className: 'glossary-group', open: true });
         
@@ -1828,7 +1832,7 @@ function buildKanjiEntry(data) {
         }
         dictWrapper.appendChild(content);
         details.appendChild(dictWrapper);
-        entry.appendChild(details);
+        glossarySections.appendChild(details);
     });
     
     return entry;
@@ -1844,7 +1848,9 @@ function redirectKanji(data) {
     selectedDictionaries = {};
     const container = document.getElementById('entries-container');
     container.innerHTML = '';
-    container.appendChild(buildKanjiEntry(data));
+    const entry = buildKanjiEntry(data);
+    container.appendChild(entry);
+    observeMasonry(entry.querySelector('.glossary-sections'));
     reportButtonRects();
     requestAnimationFrame(() => {
         document.getElementById('entries-container').scrollTop = 0;
