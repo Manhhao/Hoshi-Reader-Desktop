@@ -164,7 +164,7 @@ export type KanjiResponse = {
 
 export type PopupAnkiConfig = {
   useAnkiConnect: boolean;
-  allowDupes: boolean;
+  duplicateBehavior: DuplicateBehavior;
   disableShowNotes: boolean;
   compactGlossariesAnki: boolean;
   cardFormatCount: number;
@@ -200,6 +200,8 @@ export type AnkiCardFormat = {
   icon: string;
 };
 
+export type DuplicateBehavior = "prevent" | "add" | "overwrite";
+
 export type AnkiSettings = {
   disabled: boolean;
   url: string | null;
@@ -207,7 +209,7 @@ export type AnkiSettings = {
   duplicateScope: "collection" | "deck" | "deckroot";
   checkAllModels: boolean;
   forceSync: boolean;
-  allowDupes: boolean;
+  duplicateBehavior: DuplicateBehavior;
   disableShowNotes: boolean;
   compactGlossaries: boolean;
   cardFormats: AnkiCardFormat[];

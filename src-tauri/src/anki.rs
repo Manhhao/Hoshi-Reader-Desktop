@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -65,6 +65,15 @@ pub enum DuplicateScope {
     Deckroot,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DuplicateBehavior {
+    #[default]
+    Prevent,
+    Add,
+    Overwrite,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SasayakiAudioFormat {
@@ -90,7 +99,9 @@ pub struct AnkiConfig {
     pub duplicate_scope: DuplicateScope,
     pub check_all_models: bool,
     pub force_sync: bool,
+    #[serde(skip_serializing)]
     pub allow_dupes: bool,
+    pub duplicate_behavior: DuplicateBehavior,
     pub disable_show_notes: bool,
     pub compact_glossaries: bool,
     pub card_formats: Vec<AnkiCardFormat>,
@@ -117,11 +128,16 @@ fn config_path(app: &AppHandle) -> PathBuf {
 }
 
 pub fn load_config(app: &AppHandle) -> AnkiConfig {
-    library::read_json(&config_path(app)).unwrap_or_else(|| AnkiConfig {
-        url: Some("http://127.0.0.1:8765".to_string()),
-        audio_volume: default_audio_volume(),
-        ..AnkiConfig::default()
-    })
+    let mut config: AnkiConfig =
+        library::read_json(&config_path(app)).unwrap_or_else(|| AnkiConfig {
+            url: Some("http://127.0.0.1:8765".to_string()),
+            audio_volume: default_audio_volume(),
+            ..AnkiConfig::default()
+        });
+    if config.allow_dupes {
+        config.duplicate_behavior = DuplicateBehavior::Add;
+    }
+    config
 }
 
 fn save_config(app: &AppHandle, config: &AnkiConfig) {
@@ -487,7 +503,7 @@ fn parse_single_glossaries(content: &HashMap<String, String>) -> HashMap<String,
 #[serde(rename_all = "camelCase")]
 pub struct PopupAnkiConfig {
     use_anki_connect: bool,
-    allow_dupes: bool,
+    duplicate_behavior: DuplicateBehavior,
     disable_show_notes: bool,
     compact_glossaries_anki: bool,
     card_format_count: usize,
@@ -505,7 +521,7 @@ pub fn anki_config(app: AppHandle) -> PopupAnkiConfig {
     let config = load_config(&app);
     PopupAnkiConfig {
         use_anki_connect: true,
-        allow_dupes: config.allow_dupes,
+        duplicate_behavior: config.duplicate_behavior,
         disable_show_notes: config.disable_show_notes,
         compact_glossaries_anki: config.compact_glossaries,
         card_format_count: if config.disabled {
@@ -872,7 +888,7 @@ pub async fn anki_mine(
     }
 
     let mut options = duplicate_options(&config, &deck);
-    options["allowDuplicate"] = json!(config.allow_dupes);
+    options["allowDuplicate"] = json!(config.duplicate_behavior != DuplicateBehavior::Prevent);
 
     let mut note = json!({
         "deckName": deck,
@@ -998,6 +1014,24 @@ pub async fn anki_mine(
         }
     }
 
+    let existing = match config.duplicate_behavior {
+        DuplicateBehavior::Overwrite => {
+            find_existing_note(&config, format, &deck, &model, &fields).await
+        }
+        _ => None,
+    };
+    if existing.is_some() {
+        let media_fields: HashSet<&str> = ["audio", "picture"]
+            .iter()
+            .filter_map(|kind| note.get(kind)?.as_array())
+            .flatten()
+            .filter_map(|media| media.get("fields")?.as_array())
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        fields.retain(|field, value| !value.is_empty() || media_fields.contains(field.as_str()));
+    }
+
     note["fields"] = json!(fields);
 
     let tags: Vec<String> = RE_HANDLEBAR
@@ -1017,13 +1051,20 @@ pub async fn anki_mine(
         .split_whitespace()
         .map(String::from)
         .collect();
-    if !tags.is_empty() {
+    let ok = if let Some(id) = existing {
+        note["id"] = json!(id);
         note["tags"] = json!(tags);
-    }
-
-    let ok = anki_request(&config, "addNote", json!({ "note": note }))
-        .await
-        .is_ok();
+        anki_request(&config, "updateNote", json!({ "note": note }))
+            .await
+            .is_ok()
+    } else {
+        if !tags.is_empty() {
+            note["tags"] = json!(tags);
+        }
+        anki_request(&config, "addNote", json!({ "note": note }))
+            .await
+            .is_ok()
+    };
     if ok && config.force_sync {
         let _ = anki_request(&config, "sync", Value::Null).await;
     }
@@ -1052,8 +1093,18 @@ pub async fn anki_show_notes(app: AppHandle, fields: HashMap<String, String>, sl
     if word.is_empty() {
         return;
     }
-    let escaped = word.replace('"', "");
+    let query = duplicate_query(&config, &deck, &model, &first, &word);
+    let _ = anki_request(&config, "guiBrowse", json!({ "query": query })).await;
+}
 
+fn duplicate_query(
+    config: &AnkiConfig,
+    deck: &str,
+    model: &str,
+    first: &str,
+    word: &str,
+) -> String {
+    let escaped = word.replace('"', "");
     let mut search = vec![format!("\"{first}:{escaped}\"")];
     if !config.check_all_models {
         search.push(format!("\"note:{model}\""));
@@ -1062,11 +1113,30 @@ pub async fn anki_show_notes(app: AppHandle, fields: HashMap<String, String>, sl
         DuplicateScope::Collection => {}
         DuplicateScope::Deck => search.push(format!("\"deck:{deck}\"")),
         DuplicateScope::Deckroot => {
-            let root = deck.split("::").next().unwrap_or(&deck);
+            let root = deck.split("::").next().unwrap_or(deck);
             search.push(format!("\"deck:{root}\""));
         }
     }
-    let _ = anki_request(&config, "guiBrowse", json!({ "query": search.join(" ") })).await;
+    search.join(" ")
+}
+
+async fn find_existing_note(
+    config: &AnkiConfig,
+    format: &AnkiCardFormat,
+    deck: &str,
+    model: &str,
+    fields: &HashMap<String, String>,
+) -> Option<u64> {
+    let first = first_field(config, format)?;
+    let word = fields.get(first).filter(|word| !word.is_empty())?;
+    let query = duplicate_query(config, deck, model, first, word);
+    anki_request(config, "findNotes", json!({ "query": query }))
+        .await
+        .ok()?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_u64)
+        .max()
 }
 
 fn sha1_hex(bytes: &[u8]) -> String {

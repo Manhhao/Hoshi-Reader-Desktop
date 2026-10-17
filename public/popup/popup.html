@@ -133,7 +133,7 @@
       window.audioEnableAutoplay = false;
       window.audioVolume = 1;
       window.needsAudio = false;
-      window.allowDupes = false;
+      window.duplicateBehavior = "prevent";
       window.useAnkiConnect = true;
       window.cardFormatCount = 0;
       window.validFormatFlags = [];
@@ -281,7 +281,7 @@
         if (!anki) return;
         applyMineIcons(anki.cardFormatIcons);
         window.useAnkiConnect = anki.useAnkiConnect;
-        window.allowDupes = anki.allowDupes;
+        window.duplicateBehavior = anki.duplicateBehavior;
         window.disableShowNotes = anki.disableShowNotes;
         window.compactGlossariesAnki = anki.compactGlossariesAnki;
         window.cardFormatCount = anki.cardFormatCount;

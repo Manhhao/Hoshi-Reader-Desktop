@@ -548,6 +548,12 @@
     anki?.cardFormats.find((f) => f.id === selectedFormatId) ?? anki?.cardFormats[0] ?? null,
   );
 
+  const duplicateBehaviorLabels = {
+    prevent: "Prevent",
+    add: "Add",
+    overwrite: "Overwrite",
+  } as const;
+
   const duplicateScopeLabels = {
     collection: "Collection",
     deck: "Deck",
@@ -1631,11 +1637,17 @@
 
             <div class="card border border-base-300 bg-base-100">
               <div class="card-body gap-4">
-                <SettingToggle
-                  label="Allow Duplicates"
-                  bind:checked={anki.allowDupes}
-                  onchange={saveAnki}
-                />
+                <SettingRow label="Duplicate Behavior">
+                  <select
+                    class="select select-sm w-36"
+                    bind:value={anki.duplicateBehavior}
+                    onchange={saveAnki}
+                  >
+                    {#each Object.entries(duplicateBehaviorLabels) as [value, label] (value)}
+                      <option {value}>{label}</option>
+                    {/each}
+                  </select>
+                </SettingRow>
                 <SettingToggle
                   label="Disable Show Notes Button"
                   bind:checked={anki.disableShowNotes}
