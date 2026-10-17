@@ -1946,16 +1946,18 @@
           {@render transportButton(FastForward, () => player.nextCue())}
           {@render transportButton(RotateCw, () => player.skip(true))}
         </div>
-        <input
-          type="range"
-          class="mx-1 h-3 w-32 cursor-pointer appearance-none rounded-full bg-current/25 bg-clip-content py-[5px] [&::-webkit-slider-thumb]:size-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current"
-          style="background-image: linear-gradient(to right, currentColor {percent}%, transparent {percent}%)"
-          min="0"
-          max={player.duration}
-          step="0.1"
-          value={player.currentTime}
-          oninput={(e) => player.scrub(Number(e.currentTarget.value))}
-        />
+        {#key player.duration}
+          <input
+            type="range"
+            class="mx-1 h-3 w-32 cursor-pointer appearance-none rounded-full bg-current/25 bg-clip-content py-[5px] [&::-webkit-slider-thumb]:size-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current"
+            style="background-image: linear-gradient(to right, currentColor {percent}%, transparent {percent}%)"
+            min="0"
+            max={player.duration}
+            step="0.1"
+            value={player.currentTime}
+            oninput={(e) => player.scrub(Number(e.currentTarget.value))}
+          />
+        {/key}
         <span class="whitespace-nowrap tabular-nums">
           {formatTime(player.currentTime)} / {formatTime(player.duration)}
         </span>
@@ -2388,15 +2390,17 @@
                   </button>
                 </div>
                 <div class="flex flex-col gap-1">
-                  <input
-                    type="range"
-                    class="range range-xs text-primary"
-                    min="0"
-                    max={sasayaki.duration}
-                    step="0.1"
-                    value={sasayaki.currentTime}
-                    oninput={(e) => sasayaki.scrub(Number(e.currentTarget.value))}
-                  />
+                  {#key sasayaki.duration}
+                    <input
+                      type="range"
+                      class="range range-xs text-primary"
+                      min="0"
+                      max={sasayaki.duration}
+                      step="0.1"
+                      value={sasayaki.currentTime}
+                      oninput={(e) => sasayaki.scrub(Number(e.currentTarget.value))}
+                    />
+                  {/key}
                   <div class="flex justify-between text-xs tabular-nums text-base-content/60">
                     <span>{formatTime(sasayaki.currentTime)}</span>
                     <span>−{formatTime(Math.max(sasayaki.duration - sasayaki.currentTime, 0))}</span>
