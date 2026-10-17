@@ -538,7 +538,7 @@
     {compact}
     bind:value={readerConfig.popupWidth}
     min={100}
-    max={700}
+    max={1000}
     step={10}
     onchange={() => save(onPopupResize)}
   />
@@ -547,7 +547,7 @@
     {compact}
     bind:value={readerConfig.popupHeight}
     min={100}
-    max={800}
+    max={1000}
     step={10}
     onchange={() => save(onPopupResize)}
   />
