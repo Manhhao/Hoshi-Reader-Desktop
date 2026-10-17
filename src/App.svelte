@@ -12,6 +12,7 @@
   import ManageShelves from "./lib/ManageShelves.svelte";
   import Rail from "./lib/Rail.svelte";
   import Reader from "./lib/Reader.svelte";
+  import { readerConfig } from "./lib/readerConfig.svelte";
   import type { BookHighlight } from "./lib/highlights";
   import Settings, { settingsTabs, type SettingsTab } from "./lib/Settings.svelte";
   import SourceList from "./lib/SourceList.svelte";
@@ -123,11 +124,32 @@
     if (result) await importPaths(result);
   }
 
+  async function enterFullscreen() {
+    const win = getCurrentWindow();
+    if (await win.isFullscreen()) return;
+    await new Promise<void>((resolve) => {
+      let timer = window.setTimeout(done, 1000);
+      function done() {
+        window.removeEventListener("resize", onResize);
+        resolve();
+      }
+      function onResize() {
+        clearTimeout(timer);
+        timer = window.setTimeout(done, 150);
+      }
+      window.addEventListener("resize", onResize);
+      win.setFullscreen(true);
+    });
+  }
+
   async function openBook(id: string, skipSyncOnOpen = false) {
+    const fullscreen = readerConfig.openInFullscreen ? enterFullscreen() : null;
     const document = await invoke<BookDocument>("open_book", { id });
     const bookInfo = await invoke<BookInfo>("load_book_info", { id });
     const bookmark = await invoke<Bookmark | null>("load_bookmark", { id });
     const book = books.find((b) => b.id === id)!;
+    const savedHighlights = await invoke<BookHighlight[]>("load_highlights", { id });
+    await fullscreen;
     current = {
       id,
       folder: book.folder,
@@ -135,7 +157,7 @@
       spine: document.spine,
       toc: document.toc,
       cover: book.cover ?? null,
-      savedHighlights: await invoke<BookHighlight[]>("load_highlights", { id }),
+      savedHighlights,
       bookInfo,
       bookmark,
       skipSyncOnOpen,

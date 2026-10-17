@@ -58,6 +58,7 @@ export type ReaderConfig = {
   showStatisticsToggle: boolean;
   showReadingSpeed: boolean;
   showReadingTime: boolean;
+  openInFullscreen: boolean;
   popupWidth: number;
   popupHeight: number;
   popupScale: number;
@@ -111,6 +112,7 @@ const defaults: ReaderConfig = {
   showStatisticsToggle: false,
   showReadingSpeed: false,
   showReadingTime: false,
+  openInFullscreen: false,
   popupWidth: 400,
   popupHeight: 300,
   popupScale: 1.0,

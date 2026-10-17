@@ -511,6 +511,15 @@
   {/if}
 {/snippet}
 
+{#snippet fullscreen()}
+  <SettingToggle
+    label="Open Reader in Fullscreen"
+    {compact}
+    bind:checked={readerConfig.openInFullscreen}
+    onchange={saveReaderConfig}
+  />
+{/snippet}
+
 {#snippet display()}
   <SettingToggle
     label="Show Statistics Toggle"
@@ -607,6 +616,7 @@
       <SettingGroup>{@render layoutAdvanced()}</SettingGroup>
     {/if}
   {:else if tab === "Display"}
+    <SettingGroup>{@render fullscreen()}</SettingGroup>
     <SettingGroup>{@render progress()}</SettingGroup>
     <SettingGroup>{@render display()}</SettingGroup>
   {:else}
@@ -633,6 +643,7 @@
   {#if !readerConfig.continuousMode}
     <SettingsSection title="Two-Page Spread">{@render spread()}</SettingsSection>
   {/if}
+  <SettingsSection title="Window">{@render fullscreen()}</SettingsSection>
   <SettingsSection title="Progress">{@render progress()}</SettingsSection>
   <SettingsSection title="Display">{@render display()}</SettingsSection>
   <SettingsSection title="Popup">{@render popupSliders()}{@render popupToggles()}</SettingsSection>
