@@ -46,7 +46,7 @@ fn locate(app: &AppHandle) -> Option<PathBuf> {
         Some(root) => PathBuf::from(root),
         None => app.path().app_data_dir().ok()?.join("Nakuru"),
     };
-    (root.join("runtime/nakuru.dll").is_file() && root.join("nakuru.pack").is_file())
+    (root.join("nakuru.dll").is_file() && root.join("nakuru.pack").is_file())
         .then_some(root)
 }
 
@@ -179,7 +179,7 @@ fn run(
     events: &Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
-    let library_path = root.join("runtime/nakuru.dll");
+    let library_path = root.join("nakuru.dll");
     let library = unsafe {
         Library::load_with_flags(
             &library_path,
