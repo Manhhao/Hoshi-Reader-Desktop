@@ -41,7 +41,6 @@ impl SasayakiTranscript {
 #[derive(Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum Progress {
-    #[cfg(target_os = "macos")]
     Downloading {
         fraction: f64,
     },
@@ -54,7 +53,6 @@ pub enum Progress {
 }
 
 enum Event {
-    #[cfg(target_os = "macos")]
     Download(f64),
     Tokens(Vec<SasayakiToken>, f64),
     Finish(Option<String>),
@@ -147,7 +145,6 @@ pub async fn sasayaki_transcribe(
         let mut error = None;
         while let Some(event) = events.recv().await {
             match event {
-                #[cfg(target_os = "macos")]
                 Event::Download(fraction) => {
                     progress(Progress::Downloading { fraction });
                 }

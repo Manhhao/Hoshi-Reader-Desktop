@@ -1,10 +1,14 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::time::Duration;
 
 use libloading::os::windows::Library;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 use windows_sys::Win32::System::LibraryLoader::{
@@ -12,6 +16,7 @@ use windows_sys::Win32::System::LibraryLoader::{
 };
 
 use super::{Event, Events};
+use crate::library;
 use crate::pcm::{MonoReader, with_media_foundation};
 use crate::sasayaki::SasayakiToken;
 
@@ -41,21 +46,122 @@ type Run = unsafe extern "C" fn(*mut c_void, ReadFn, usize, EmitFn, *mut c_void)
 type Error = unsafe extern "C" fn() -> *const c_char;
 type Destroy = unsafe extern "C" fn(*mut c_void);
 
-fn locate(app: &AppHandle) -> Option<PathBuf> {
-    let root = match std::env::var_os("HOSHI_NAKURU_DIR") {
-        Some(root) => PathBuf::from(root),
-        None => app.path().app_data_dir().ok()?.join("Nakuru"),
-    };
-    (root.join("nakuru.dll").is_file() && root.join("nakuru.pack").is_file())
-        .then_some(root)
+const RELEASE: &str = "https://huggingface.co/Oxydlate/Nakuru/resolve/233f7b962e511d7886868a22c263b47a8c2e66e7/nakuru";
+
+struct Asset {
+    name: &'static str,
+    path: &'static str,
+    bytes: u64,
+    sha256: &'static str,
 }
 
-pub async fn status(app: AppHandle) -> &'static str {
-    if locate(&app).is_some() {
+const ASSETS: [Asset; 2] = [
+    Asset {
+        name: "nakuru.pack",
+        path: "model/v1/nakuru.pack",
+        bytes: 79608510,
+        sha256: "85d870ed7bd6162284b0b0b7daf8bde2b101c19308a04af413e7470cf4490c29",
+    },
+    Asset {
+        name: "nakuru.dll",
+        path: "runtime/windows-x64/1/nakuru.dll",
+        bytes: 335872,
+        sha256: "8a4fe121a25f30780d452cf1a4c02b49d004c498bbd4b16a1845121984582a11",
+    },
+];
+
+fn supported() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    return is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
+    #[cfg(not(target_arch = "x86_64"))]
+    false
+}
+
+pub async fn status(_app: AppHandle) -> &'static str {
+    if supported() {
         "available"
     } else {
-        "nakuruUnavailable"
+        "unsupportedCpu"
     }
+}
+
+async fn install(
+    app: &AppHandle,
+    events: &Events,
+    cancel: &CancellationToken,
+) -> Result<PathBuf, String> {
+    if let Some(root) = std::env::var_os("HOSHI_NAKURU_DIR") {
+        return Ok(PathBuf::from(root));
+    }
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("Nakuru");
+    let marker = root.join("installed.json");
+    let mut installed: HashMap<String, String> = library::read_json(&marker).unwrap_or_default();
+    let pending: Vec<_> = ASSETS
+        .iter()
+        .filter(|asset| {
+            installed.get(asset.name).map(String::as_str) != Some(asset.sha256)
+                || !root.join(asset.name).is_file()
+        })
+        .collect();
+    if pending.is_empty() {
+        return Ok(root);
+    }
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    let total: u64 = pending.iter().map(|asset| asset.bytes).sum();
+    let mut received = 0;
+    let mut percent = None;
+    let client = reqwest::Client::new();
+    for asset in pending {
+        let part = root.join(format!("{}.part", asset.name));
+        let mut response = client
+            .get(format!("{RELEASE}/{}", asset.path))
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|error| format!("Could not download {}: {error}", asset.name))?;
+        let mut file = File::create(&part).map_err(|error| error.to_string())?;
+        let mut hasher = Sha256::new();
+        loop {
+            let chunk = tokio::select! {
+                _ = cancel.cancelled() => {
+                    drop(file);
+                    fs::remove_file(&part).ok();
+                    return Ok(root);
+                }
+                chunk = response.chunk() => chunk
+                    .map_err(|error| format!("Could not download {}: {error}", asset.name))?,
+            };
+            let Some(chunk) = chunk else { break };
+            hasher.update(&chunk);
+            file.write_all(&chunk).map_err(|error| error.to_string())?;
+            received += chunk.len() as u64;
+            let step = received * 100 / total;
+            if percent != Some(step) {
+                percent = Some(step);
+                events
+                    .send(Event::Download(received as f64 / total as f64))
+                    .ok();
+            }
+        }
+        drop(file);
+        let digest: String = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        if digest != asset.sha256 {
+            fs::remove_file(&part).ok();
+            return Err(format!("Downloaded {} failed verification", asset.name));
+        }
+        fs::rename(&part, root.join(asset.name)).map_err(|error| error.to_string())?;
+        installed.insert(asset.name.into(), asset.sha256.into());
+        library::write_json(&marker, &installed)?;
+    }
+    Ok(root)
 }
 
 pub struct Audio {
@@ -84,10 +190,23 @@ pub fn start(
     events: Events,
     cancel: CancellationToken,
 ) -> Result<(), String> {
-    let root = locate(app).ok_or("Nakuru is not installed")?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let result = with_media_foundation(|| Ok(run(&root, audio, from, performance, &events, cancel)))
-            .unwrap_or_else(|error| Err(error.to_string()));
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = match install(&app, &events, &cancel).await {
+            Ok(_) if cancel.is_cancelled() => Ok(()),
+            Ok(root) => {
+                let events = events.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    with_media_foundation(|| {
+                        Ok(run(&root, audio, from, performance, &events, cancel))
+                    })
+                    .unwrap_or_else(|error| Err(error.to_string()))
+                })
+                .await
+                .unwrap_or_else(|error| Err(error.to_string()))
+            }
+            Err(error) => Err(error),
+        };
         events.send(Event::Finish(result.err())).ok();
     });
     Ok(())
@@ -231,7 +350,9 @@ fn run(
             Ok(())
         });
         if let Err(error) = result {
-            sender.send(Err(format!("The audio file could not be read: {error}"))).ok();
+            sender
+                .send(Err(format!("The audio file could not be read: {error}")))
+                .ok();
         }
     });
     let job = Recognition {

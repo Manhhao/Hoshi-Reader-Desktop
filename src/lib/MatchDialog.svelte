@@ -2,6 +2,7 @@
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { ask, open } from "@tauri-apps/plugin-dialog";
   import { isWindows } from "./platform";
+  import { sasayakiConfig, saveSasayakiConfig } from "./sasayakiConfig.svelte";
   import type { BookInfo, SasayakiMatchData, SasayakiPlayback } from "./types";
 
   type Progress =
@@ -16,7 +17,6 @@
   let bookId = $state("");
   let transcriberStatus = $state("");
   let useAudio = $state(false);
-  let performance = $state(1);
   let subtitleFile = $state<string | null>(null);
   let audioFile = $state<string | null>(null);
   let isMatching = $state(false);
@@ -72,7 +72,13 @@
     matchError = "";
     const onProgress = new Channel<Progress>((message) => (progress = message));
     try {
-      if (useAudio) await invoke("sasayaki_transcribe", { id: bookId, path: file, performance, onProgress });
+      if (useAudio)
+        await invoke("sasayaki_transcribe", {
+          id: bookId,
+          path: file,
+          performance: sasayakiConfig.sasayakiTranscriptionPerformance,
+          onProgress,
+        });
       else await invoke("sasayaki_match", { id: bookId, path: file });
       onMatched();
     } catch (e) {
@@ -153,10 +159,8 @@
         </button>
       </div>
 
-      {#if transcriberStatus === "nakuruUnavailable"}
-        <span class="text-sm text-base-content/60">
-          Install Nakuru in the app data folder's Nakuru directory to enable transcription.
-        </span>
+      {#if transcriberStatus === "unsupportedCpu"}
+        <span class="text-sm text-base-content/60">Transcription requires a CPU with AVX2 and FMA.</span>
       {/if}
 
       {#if isWindows && useAudio}
@@ -165,9 +169,12 @@
           <div class="join">
             {#each ["Low", "Balanced", "Maximum"] as label, index (label)}
               <button
-                class="btn join-item btn-sm {performance === index ? 'btn-active' : ''}"
+                class="btn join-item btn-sm {sasayakiConfig.sasayakiTranscriptionPerformance === index ? 'btn-active' : ''}"
                 disabled={isMatching}
-                onclick={() => (performance = index)}
+                onclick={() => {
+                  sasayakiConfig.sasayakiTranscriptionPerformance = index;
+                  saveSasayakiConfig();
+                }}
               >
                 {label}
               </button>
