@@ -123,9 +123,6 @@ async fn install(
     events: &Events,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, String> {
-    if let Some(root) = std::env::var_os("HOSHI_NAKURU_DIR") {
-        return Ok(PathBuf::from(root));
-    }
     let root = app
         .path()
         .app_data_dir()
