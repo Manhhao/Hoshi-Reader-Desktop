@@ -4,7 +4,7 @@ use crate::sasayaki::{
     Chapter, RE_CHARACTER, SasayakiMatch, SasayakiMatchData, SasayakiToken, Source, find_text,
 };
 
-const PROBE_LENGTH: usize = 16;
+const PROBE_LENGTH: usize = 12;
 const PROBE_STRIDE: usize = 100;
 const MAX_BLOCK: usize = 2000;
 const MAX_SECONDS_PER_CHARACTER: f64 = 0.7;
@@ -115,10 +115,13 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
     }
 
     let mut cursor = 0;
+    let mut hit = 0;
     if let Some(last) = speech.characters.len().checked_sub(PROBE_LENGTH) {
         for index in (0..=last).step_by(PROBE_STRIDE) {
             let probe = &speech.characters[index..index + PROBE_LENGTH];
-            let limit = book.len().min(cursor + MAX_BLOCK + PROBE_LENGTH);
+            let limit = book
+                .len()
+                .min(cursor + MAX_BLOCK + PROBE_LENGTH + index - hit);
             let Some(found) = find_text(book, probe, cursor, limit) else {
                 continue;
             };
@@ -127,6 +130,7 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
             }
 
             cursor = found + PROBE_LENGTH;
+            hit = index;
             let previous = anchors.last().unwrap();
             if index > previous.speech && found > previous.book {
                 anchors.push(Anchor {
