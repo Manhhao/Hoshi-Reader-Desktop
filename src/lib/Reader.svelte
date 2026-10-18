@@ -1280,7 +1280,8 @@
           (binding.section === "Popup" && popups.length > 0),
       )
       .map((binding) => hotkeyConfig[binding.key])
-      .filter(Boolean),
+      .filter(Boolean)
+      .concat("F11"),
   );
 
   const frameHotkeys = $derived(
@@ -1295,7 +1296,8 @@
       return;
     }
     if (repeat || !readerShortcutKeys.includes(key)) return;
-    if (key === hotkeyConfig.toggleTracking) toggleTracking();
+    if (key === "F11") toggleFullscreen();
+    else if (key === hotkeyConfig.toggleTracking) toggleTracking();
     else if (key === hotkeyConfig.sasayakiPlayback) toggleSasayakiPlayback();
     else if (key === hotkeyConfig.sasayakiPreviousCue) sasayaki?.prevCue();
     else if (key === hotkeyConfig.sasayakiNextCue) sasayaki?.nextCue();

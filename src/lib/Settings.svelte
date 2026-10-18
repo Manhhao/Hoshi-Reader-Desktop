@@ -181,6 +181,10 @@
       return;
     }
     const key = e.key === "Escape" ? "" : normalizeHotkey(e.key);
+    if (key === "F11") {
+      bindingError = "Reserved for fullscreen.";
+      return;
+    }
     const conflict = [{ key: "scanModifier" as const, label: "Scan Modifier" }, ...readerHotkeys]
       .find((binding) => key && binding.key !== bindingKey && hotkeyConfig[binding.key] === key);
     if (conflict) {
