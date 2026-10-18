@@ -167,6 +167,16 @@ pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Str
     fs::write(path, data).map_err(|error| error.to_string())
 }
 
+pub(crate) fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
+    for _ in 0..5 {
+        if fs::rename(from, to).is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    fs::rename(from, to)
+}
+
 pub(crate) fn read_book_json<T: DeserializeOwned>(
     app: &AppHandle,
     id: &str,

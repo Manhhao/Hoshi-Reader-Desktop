@@ -54,7 +54,7 @@ fn archive_directory(root: &Path, destination: &Path) -> Fallible {
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         add_directory(&mut writer, root, root, options)?;
         writer.finish()?.into_inner()?.sync_all()?;
-        fs::rename(&temporary, destination)?;
+        crate::library::rename_retrying(&temporary, destination)?;
         Ok(())
     })();
     if result.is_err() {

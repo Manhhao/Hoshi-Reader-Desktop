@@ -72,7 +72,10 @@ pub fn shared() -> MutexGuard<'static, SyncStorage> {
 pub fn write_atomic(path: &Path, data: &[u8]) -> SyncResult<()> {
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
     fs::write(&temporary, data)?;
-    fs::rename(&temporary, path)?;
+    if let Err(error) = library::rename_retrying(&temporary, path) {
+        fs::remove_file(&temporary).ok();
+        return Err(error.into());
+    }
     Ok(())
 }
 
