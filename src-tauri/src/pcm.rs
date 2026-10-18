@@ -55,7 +55,7 @@ unsafe fn read_media_foundation(
         output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
         reader.SetCurrentMediaType(audio, None, &output)?;
         let format = reader.GetCurrentMediaType(audio)?;
-        let rate = format.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)?;
+        let mut rate = format.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)?;
         let channels = format.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS)? as usize;
 
         reader.SetCurrentPosition(&GUID::zeroed(), &PROPVARIANT::from((start * 1e7) as i64))?;
@@ -88,6 +88,12 @@ unsafe fn read_media_foundation(
             let mut len = 0;
             buffer.Lock(&mut data, None, Some(&mut len))?;
             let chunk = std::slice::from_raw_parts(data as *const i16, len as usize / 2);
+            if samples.is_empty()
+                && let Ok(duration) = sample.GetSampleDuration()
+                && duration > 0
+            {
+                rate = ((chunk.len() / channels) as f64 * 1e7 / duration as f64).round() as u32;
+            }
             let skip = ((start - time).max(0.0) * rate as f64) as usize * channels;
             samples.extend_from_slice(&chunk[skip.min(chunk.len())..]);
             buffer.Unlock()?;
