@@ -42,7 +42,11 @@ pub mod mac {
     static mut ORIGINAL_SCROLL_WHEEL: Option<ScrollWheel> = None;
     pub static SIDEWAYS: AtomicBool = AtomicBool::new(false);
 
-    unsafe extern "C-unwind" fn scroll_wheel(this: *mut AnyObject, sel: Sel, event: *mut AnyObject) {
+    unsafe extern "C-unwind" fn scroll_wheel(
+        this: *mut AnyObject,
+        sel: Sel,
+        event: *mut AnyObject,
+    ) {
         unsafe {
             let original = ORIGINAL_SCROLL_WHEEL.unwrap();
             if !SIDEWAYS.load(Ordering::Relaxed) {

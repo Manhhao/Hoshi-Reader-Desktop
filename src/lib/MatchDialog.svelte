@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { ask, open } from "@tauri-apps/plugin-dialog";
+  import { isWindows } from "./platform";
+  import { sasayakiConfig, saveSasayakiConfig } from "./sasayakiConfig.svelte";
   import type { BookInfo, SasayakiMatchData, SasayakiPlayback } from "./types";
 
   type Progress =
@@ -13,7 +15,7 @@
 
   let dialog = $state<HTMLDialogElement>();
   let bookId = $state("");
-  let canTranscribe = $state<boolean>();
+  let transcriberStatus = $state("");
   let useAudio = $state(false);
   let subtitleFile = $state<string | null>(null);
   let audioFile = $state<string | null>(null);
@@ -24,6 +26,7 @@
   let transcript = $state<Transcript | null>(null);
   let matchError = $state("");
 
+  const canTranscribe = $derived(transcriberStatus === "available");
   const file = $derived(useAudio ? audioFile : subtitleFile);
   const resumable = $derived(
     useAudio &&
@@ -39,7 +42,7 @@
       subtitleFile = null;
       matchError = "";
     }
-    canTranscribe ??= (await invoke<string>("sasayaki_transcriber_status")) === "available";
+    transcriberStatus = await invoke<string>("sasayaki_transcriber_status");
     if (canTranscribe) {
       const playback = await invoke<SasayakiPlayback | null>("sasayaki_load_playback", { id });
       audioFile = playback?.audioPath ?? null;
@@ -69,7 +72,13 @@
     matchError = "";
     const onProgress = new Channel<Progress>((message) => (progress = message));
     try {
-      if (useAudio) await invoke("sasayaki_transcribe", { id: bookId, path: file, onProgress });
+      if (useAudio)
+        await invoke("sasayaki_transcribe", {
+          id: bookId,
+          path: file,
+          performance: sasayakiConfig.sasayakiTranscriptionPerformance,
+          onProgress,
+        });
       else await invoke("sasayaki_match", { id: bookId, path: file });
       onMatched();
     } catch (e) {
@@ -149,6 +158,30 @@
           Transcription
         </button>
       </div>
+
+      {#if transcriberStatus === "unsupportedCpu"}
+        <span class="text-sm text-base-content/60">Transcription requires a CPU with AVX2 and FMA.</span>
+      {/if}
+
+      {#if isWindows && useAudio}
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm">Performance</span>
+          <div class="join">
+            {#each ["Low", "Balanced", "Maximum"] as label, index (label)}
+              <button
+                class="btn join-item btn-sm {sasayakiConfig.sasayakiTranscriptionPerformance === index ? 'btn-active' : ''}"
+                disabled={isMatching}
+                onclick={() => {
+                  sasayakiConfig.sasayakiTranscriptionPerformance = index;
+                  saveSasayakiConfig();
+                }}
+              >
+                {label}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <div class="flex items-center justify-between gap-3">
         <span class="min-w-0 truncate text-sm">{file ? fileName(file) : "No file selected"}</span>

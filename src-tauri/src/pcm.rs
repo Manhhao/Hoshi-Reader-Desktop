@@ -4,6 +4,13 @@ pub type Pcm = (Vec<i16>, u32, usize);
 
 #[cfg(windows)]
 pub fn decode(path: &Path, start: f64, end: f64, mime: &str) -> Option<Pcm> {
+    with_media_foundation(|| unsafe { read_media_foundation(path, start, end, mime) }).ok()
+}
+
+#[cfg(windows)]
+pub fn with_media_foundation<T>(
+    read: impl FnOnce() -> windows::core::Result<T>,
+) -> windows::core::Result<T> {
     use windows::Win32::Media::MediaFoundation::{
         MF_VERSION, MFSTARTUP_LITE, MFShutdown, MFStartup,
     };
@@ -11,15 +18,15 @@ pub fn decode(path: &Path, start: f64, end: f64, mime: &str) -> Option<Pcm> {
 
     unsafe {
         let com = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
-        let pcm = MFStartup(MF_VERSION, MFSTARTUP_LITE).ok().and_then(|_| {
-            let pcm = read_media_foundation(path, start, end, mime).ok();
+        let result = MFStartup(MF_VERSION, MFSTARTUP_LITE).and_then(|_| {
+            let result = read();
             let _ = MFShutdown();
-            pcm
+            result
         });
         if com {
             CoUninitialize();
         }
-        pcm
+        result
     }
 }
 
@@ -32,28 +39,11 @@ unsafe fn read_media_foundation(
 ) -> windows::core::Result<Pcm> {
     use windows::Win32::Media::MediaFoundation::*;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
-    use windows::core::{GUID, HSTRING, Interface};
+    use windows::core::GUID;
 
     unsafe {
-        let stream = MFCreateFile(
-            MF_ACCESSMODE_READ,
-            MF_OPENMODE_FAIL_IF_NOT_EXIST,
-            MF_FILEFLAGS_NONE,
-            &HSTRING::from(path.as_os_str()),
-        )?;
-        stream
-            .cast::<IMFAttributes>()?
-            .SetString(&MF_BYTESTREAM_CONTENT_TYPE, &HSTRING::from(mime))?;
-        let reader = MFCreateSourceReaderFromByteStream(&stream, None)?;
+        let reader = open_reader(path, mime, false)?;
         let audio = MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32;
-        reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false)?;
-        reader.SetStreamSelection(audio, true)?;
-
-        let output = MFCreateMediaType()?;
-        output.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
-        output.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
-        output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
-        reader.SetCurrentMediaType(audio, None, &output)?;
         let format = reader.GetCurrentMediaType(audio)?;
         let mut rate = format.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)?;
         let channels = format.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS)? as usize;
@@ -145,4 +135,134 @@ pub fn decode(path: &Path, start: f64, end: f64, _mime: &str) -> Option<Pcm> {
         )
     };
     pcm
+}
+
+#[cfg(windows)]
+unsafe fn open_reader(
+    path: &Path,
+    mime: &str,
+    mono: bool,
+) -> windows::core::Result<windows::Win32::Media::MediaFoundation::IMFSourceReader> {
+    use windows::Win32::Media::MediaFoundation::*;
+    use windows::core::{HSTRING, Interface};
+
+    unsafe {
+        let stream = MFCreateFile(
+            MF_ACCESSMODE_READ,
+            MF_OPENMODE_FAIL_IF_NOT_EXIST,
+            MF_FILEFLAGS_NONE,
+            &HSTRING::from(path.as_os_str()),
+        )?;
+        stream
+            .cast::<IMFAttributes>()?
+            .SetString(&MF_BYTESTREAM_CONTENT_TYPE, &HSTRING::from(mime))?;
+        let reader = MFCreateSourceReaderFromByteStream(&stream, None)?;
+        let audio = MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32;
+        reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false)?;
+        reader.SetStreamSelection(audio, true)?;
+
+        let output = MFCreateMediaType()?;
+        output.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
+        output.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
+        output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
+        if mono {
+            output.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 16000)?;
+            output.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, 1)?;
+            output.SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, 2)?;
+            output.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 32000)?;
+        }
+        reader.SetCurrentMediaType(audio, None, &output)?;
+        Ok(reader)
+    }
+}
+
+#[cfg(windows)]
+pub struct MonoReader {
+    reader: windows::Win32::Media::MediaFoundation::IMFSourceReader,
+    samples: Vec<i16>,
+    start: usize,
+    ended: bool,
+    anchored: bool,
+}
+
+#[cfg(windows)]
+impl MonoReader {
+    pub const RATE: usize = 16000;
+
+    pub fn duration(path: &Path, mime: &str) -> windows::core::Result<f64> {
+        use windows::Win32::Media::MediaFoundation::*;
+
+        unsafe {
+            let reader = open_reader(path, mime, true)?;
+            let duration = reader
+                .GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE.0 as u32, &MF_PD_DURATION)?;
+            Ok(u64::try_from(&duration)? as f64 / 1e7)
+        }
+    }
+
+    pub fn open(path: &Path, mime: &str, from: f64) -> windows::core::Result<Self> {
+        use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+        use windows::core::GUID;
+
+        unsafe {
+            let reader = open_reader(path, mime, true)?;
+            reader.SetCurrentPosition(&GUID::zeroed(), &PROPVARIANT::from((from * 1e7) as i64))?;
+            Ok(MonoReader {
+                reader,
+                samples: Vec::new(),
+                start: 0,
+                ended: false,
+                anchored: false,
+            })
+        }
+    }
+
+    pub fn read(&mut self, index: usize, output: &mut [f32]) -> windows::core::Result<()> {
+        use windows::Win32::Media::MediaFoundation::*;
+
+        let skip = index.saturating_sub(self.start).min(self.samples.len());
+        self.samples.drain(..skip);
+        self.start += skip;
+        while !self.ended && self.start + self.samples.len() < index + output.len() {
+            let mut flags = 0;
+            let mut timestamp = 0;
+            let mut sample = None;
+            unsafe {
+                self.reader.ReadSample(
+                    MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32,
+                    0,
+                    None,
+                    Some(&mut flags),
+                    Some(&mut timestamp),
+                    Some(&mut sample),
+                )?;
+            }
+            self.ended = flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0;
+            let Some(sample) = sample else {
+                continue;
+            };
+            if !self.anchored {
+                self.anchored = true;
+                self.start = (timestamp as f64 * Self::RATE as f64 / 1e7)
+                    .round()
+                    .max(0.0) as usize;
+            }
+            unsafe {
+                let buffer = sample.ConvertToContiguousBuffer()?;
+                let mut data = std::ptr::null_mut();
+                let mut len = 0;
+                buffer.Lock(&mut data, None, Some(&mut len))?;
+                let chunk = std::slice::from_raw_parts(data.cast::<i16>(), len as usize / 2);
+                self.samples.extend_from_slice(chunk);
+                buffer.Unlock()?;
+            }
+        }
+        for (position, value) in (index..).zip(output.iter_mut()) {
+            *value = position
+                .checked_sub(self.start)
+                .and_then(|offset| self.samples.get(offset))
+                .map_or(0.0, |&sample| sample as f32);
+        }
+        Ok(())
+    }
 }

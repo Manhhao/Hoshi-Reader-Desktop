@@ -1,5 +1,6 @@
 pub type Fallible<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+mod aligner;
 mod anki;
 mod backup;
 mod book;
@@ -20,7 +21,6 @@ mod sasayaki;
 mod search;
 mod statistics;
 mod sync;
-#[cfg(target_os = "macos")]
 mod transcriber;
 mod ttu_statistics;
 mod updater;
@@ -138,17 +138,10 @@ pub fn run() {
             sasayaki::sasayaki_load_playback,
             sasayaki::sasayaki_save_playback,
             sasayaki::sasayaki_audio_chapters,
-            #[cfg(target_os = "macos")]
             transcriber::sasayaki_transcriber_status,
-            #[cfg(not(target_os = "macos"))]
-            sasayaki::sasayaki_transcriber_status,
-            #[cfg(target_os = "macos")]
             transcriber::sasayaki_load_transcript,
-            #[cfg(target_os = "macos")]
             transcriber::sasayaki_clear_transcript,
-            #[cfg(target_os = "macos")]
             transcriber::sasayaki_pause_transcription,
-            #[cfg(target_os = "macos")]
             transcriber::sasayaki_transcribe,
             #[cfg(windows)]
             media_controls::media_controls_metadata,

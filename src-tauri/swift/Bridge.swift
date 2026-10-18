@@ -3,20 +3,6 @@ import Carbon
 import Foundation
 import Speech
 
-struct AlignmentSource: Decodable {
-    struct Chapter: Decodable {
-        let chapterIndex: Int
-        let start: Int
-        let length: Int
-    }
-
-    let text: [String]
-    let sentenceEnds: [Bool]
-    let segmentEnds: [Bool]
-    let chapters: [Chapter]
-    let images: [SasayakiImage]
-}
-
 final class Transcription {
     var task: Task<Void, Never>?
     var finished = false
@@ -108,31 +94,6 @@ func cancelTranscription(handle: UnsafeMutableRawPointer) {
 @_cdecl("hoshi_transcribe_release")
 func releaseTranscription(handle: UnsafeMutableRawPointer) {
     Unmanaged<Transcription>.fromOpaque(handle).release()
-}
-
-@_cdecl("hoshi_align")
-func align(
-    source: UnsafePointer<CChar>,
-    tokens: UnsafePointer<CChar>,
-    context: UnsafeMutableRawPointer,
-    callback: @convention(c) (UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Void
-) {
-    autoreleasepool {
-        let decoder = JSONDecoder()
-        let input = try! decoder.decode(AlignmentSource.self, from: Data(String(cString: source).utf8))
-        let tokens = try! decoder.decode([SasayakiToken].self, from: Data(String(cString: tokens).utf8))
-        let source = SasayakiSource(
-            text: input.text.map(Character.init),
-            sentenceEnds: input.sentenceEnds,
-            segmentEnds: input.segmentEnds,
-            chapters: input.chapters.map {
-                SasayakiSource.Chapter(chapterIndex: $0.chapterIndex, start: $0.start, length: $0.length)
-            },
-            images: input.images
-        )
-        let result = SasayakiAligner.align(source: source, tokens: tokens)
-        String(decoding: try! JSONEncoder().encode(result), as: UTF8.self).withCString { callback(context, $0) }
-    }
 }
 
 @_cdecl("hoshi_decode_audio")
