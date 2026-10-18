@@ -7,6 +7,7 @@
     const vertical = params.get('mode') === 'vertical';
     const furiganaMode = params.get('fm');
     const wheelDisabled = params.get('dw') === '1';
+    const chromium = navigator.userAgent.includes('Chrome/');
     const proxied = vertical && !wheelDisabled && navigator.userAgent.includes('Windows');
     const fontName = params.get('font');
     const fontFile = params.get('ffile');
@@ -265,6 +266,7 @@
                 -webkit-user-select: none !important;
                 user-select: none !important;
             }
+            ${chromium ? '.hoshi-sasayaki-cue { box-shadow: 0 0 0 transparent; }' : ''}
             .hoshi-sasayaki-cue.hoshi-sasayaki-active {
                 color: var(--hoshi-sasayaki-text-color) !important;
                 background-color: var(--hoshi-sasayaki-background-color) !important;

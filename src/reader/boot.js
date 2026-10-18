@@ -193,6 +193,7 @@
         -webkit-user-select: none !important;
         user-select: none !important;
       }
+      ${chromium ? ".hoshi-sasayaki-cue { box-shadow: 0 0 0 transparent; }" : ""}
       .hoshi-sasayaki-cue.hoshi-sasayaki-active {
         color: var(--hoshi-sasayaki-text-color) !important;
         background-color: var(--hoshi-sasayaki-background-color) !important;
