@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
@@ -98,8 +98,16 @@ fn hex(hasher: Sha256) -> String {
 }
 
 fn digest(path: &Path) -> Option<String> {
+    let mut file = File::open(path).ok()?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut File::open(path).ok()?, &mut hasher).ok()?;
+    let mut buffer = vec![0; 1 << 16];
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
     Some(hex(hasher))
 }
 
