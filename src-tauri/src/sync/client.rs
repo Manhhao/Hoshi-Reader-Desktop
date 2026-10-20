@@ -239,7 +239,11 @@ async fn perform_request(
         }
         None => {}
     }
-    let permit = cancellable(LIMIT.acquire()).await?.unwrap();
+    let permit = if on_progress.is_some() || matches!(request.body, Some(Body::File { .. })) {
+        None
+    } else {
+        Some(cancellable(LIMIT.acquire()).await?.unwrap())
+    };
     let response = cancellable(builder.send()).await??;
     check_connection(connection)?;
     crate::sync::task::check_cancellation()?;

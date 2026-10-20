@@ -92,6 +92,7 @@
     queue: [],
     progress: null,
     attachPending: false,
+    missingBooks: 0,
   });
   const failedBooks = $derived(driveStatus.queue.filter((item) => item.error).length);
 
@@ -147,6 +148,15 @@
     } catch (e) {
       await message(String(e), { title: "Error", kind: "error" });
     }
+  }
+
+  async function downloadAllBooks() {
+    if (!(await ask(`This will download ${driveStatus.missingBooks} book(s) from Google Drive.`, {
+      title: "Download All Books?",
+      okLabel: "Download",
+      cancelLabel: "Cancel",
+    }))) return;
+    invoke("gdrive_download_all");
   }
 
   async function signOutSync() {
@@ -1271,16 +1281,25 @@
                     {driveStatus.errorMessage}
                   </p>
                 {/if}
-                <button
-                  class="btn btn-outline btn-sm self-start"
-                  disabled={driveStatus.isSyncing}
-                  onclick={() => {
-                    attachPrompt.dismissed = false;
-                    invoke("gdrive_sync_now");
-                  }}
-                >
-                  Sync Now
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="btn btn-outline btn-sm"
+                    disabled={driveStatus.isSyncing}
+                    onclick={() => {
+                      attachPrompt.dismissed = false;
+                      invoke("gdrive_sync_now");
+                    }}
+                  >
+                    Sync Now
+                  </button>
+                  <button
+                    class="btn btn-outline btn-sm"
+                    disabled={driveStatus.missingBooks === 0}
+                    onclick={downloadAllBooks}
+                  >
+                    Download All Books
+                  </button>
+                </div>
               </div>
             </div>
           {/if}

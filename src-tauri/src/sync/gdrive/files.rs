@@ -1,8 +1,9 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, LazyLock};
 
 use serde_json::json;
 use tauri::Emitter;
+use tokio::sync::Notify;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
@@ -11,7 +12,7 @@ use crate::sync::client::{self, GoogleDriveError};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::listing::Listing;
 use crate::sync::gdrive::manager::{
-    self, Direction, Phase, Progress, QueueItem, book_title, publish, record_book, shared,
+    self, Direction, Job, Phase, Progress, QueueItem, book_title, publish, record_book, shared,
     state_folder, store,
 };
 use crate::sync::gdrive::state::{merge_book, read_state};
@@ -19,30 +20,22 @@ use crate::sync::model::{SyncBook, SyncError, SyncFileType, SyncResult, Timestam
 use crate::sync::storage::{self, SASAYAKI_MATCH, SyncRecord, SyncStorage};
 use crate::sync::{app, task};
 
+static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
+
 pub(super) async fn run() -> SyncResult<bool> {
-    let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
-    keys.sort();
-    begin_transfers(&keys);
+    enqueue(true);
     let listing = Arc::new(if shared().progress.is_some() {
         Listing::list().await?
     } else {
         Listing::default()
     });
-    let transfers = keys
-        .into_iter()
-        .map(|key| {
+    let workers = (0..8)
+        .map(|_| {
             let listing = listing.clone();
-            async move {
-                task::check_cancellation()?;
-                set_current_transfer(&key);
-                let result = sync_files(&key, &listing).await;
-                record_book(&key, Phase::File, result)?;
-                finish_transfer(&key);
-                SyncResult::Ok(())
-            }
+            async move { work(&listing).await }
         })
         .collect();
-    let result = task::concurrent(transfers).await;
+    let result = task::concurrent(workers).await;
     manager::save_cache()?;
     result?;
     if shared().cache.replaced_root && drive::remove_replaced().await.is_ok() {
@@ -50,6 +43,97 @@ pub(super) async fn run() -> SyncResult<bool> {
         manager::save_cache()?;
     }
     Ok(listing.published.load(Ordering::SeqCst))
+}
+
+async fn work(listing: &Listing) -> SyncResult<()> {
+    loop {
+        let notified = WAKE.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        let next = {
+            let mut manager = shared();
+            let epubs = manager.epubs < 3 && manager.priority == 0;
+            let index = manager.jobs.iter().position(|job| !job.epub || epubs);
+            if index.is_none() && manager.jobs.is_empty() && manager.active == 0 {
+                return Ok(());
+            }
+            index.map(|index| {
+                let job = manager.jobs.remove(index).unwrap();
+                manager.active += 1;
+                manager.epubs += job.epub as usize;
+                job
+            })
+        };
+        let Some(job) = next else {
+            client::cancellable(notified).await?;
+            continue;
+        };
+
+        set_current_transfer(&job.key);
+        let lock = lock(&job.key);
+        let result = async {
+            let _guard = client::cancellable(lock.lock()).await?;
+            if job.epub {
+                download_file(&job.key, SyncFileType::Epub, &|_| {}, listing).await
+            } else {
+                sync_files(&job.key, listing).await
+            }
+        }
+        .await;
+        let deferred = !job.epub && result.is_ok() && wants_epub(&job.key);
+        let succeeded = result.is_ok();
+        let recorded = record_book(&job.key, Phase::File, result);
+        {
+            let mut manager = shared();
+            manager.active -= 1;
+            manager.epubs -= job.epub as usize;
+            if job.epub && succeeded {
+                manager.downloads.remove(&job.key);
+            }
+            if deferred {
+                manager.jobs.push_back(Job {
+                    key: job.key.clone(),
+                    epub: true,
+                });
+            }
+            if recorded.is_err() {
+                manager.jobs.clear();
+            }
+        }
+        finish_transfer(&job.key, !deferred);
+        WAKE.notify_waiters();
+        recorded?;
+    }
+}
+
+pub(super) fn lock(key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    shared().locks.entry(key.to_string()).or_default().clone()
+}
+
+pub(super) fn missing_books() -> Vec<String> {
+    store()
+        .state
+        .books
+        .iter()
+        .filter(|(_, record)| missing_epub(record))
+        .map(|(key, _)| key.clone())
+        .collect()
+}
+
+fn missing_epub(record: &SyncRecord) -> bool {
+    !record.deleted
+        && record.files.get(&SyncFileType::Epub).is_some_and(|file| {
+            file.value.is_some()
+                && record
+                    .sources
+                    .get(&SyncFileType::Epub)
+                    .is_none_or(|&source| source < file.modified)
+        })
+}
+
+fn wants_epub(key: &str) -> bool {
+    let requested = shared().downloads.contains(key);
+    requested && store().state.books.get(key).is_some_and(missing_epub)
 }
 
 async fn sync_files(key: &str, listing: &Listing) -> SyncResult<()> {
@@ -69,7 +153,7 @@ async fn sync_files(key: &str, listing: &Listing) -> SyncResult<()> {
     result.and(cleanup_files(key, listing).await)
 }
 
-fn transfer_direction(record: &SyncRecord) -> Option<Direction> {
+fn transfer_direction(record: &SyncRecord, epub: bool) -> Option<Direction> {
     let (upload, download) = SyncFileType::ALL_CASES
         .into_iter()
         .filter(|&file_type| !record.deleted || file_type == SyncFileType::Cover)
@@ -80,7 +164,7 @@ fn transfer_direction(record: &SyncRecord) -> Option<Direction> {
                 record.attached
                     && source
                         .is_some_and(|source| published.is_none_or(|published| published < source)),
-                file_type != SyncFileType::Epub
+                (file_type != SyncFileType::Epub || epub)
                     && published
                         .is_some_and(|published| source.is_none_or(|source| source < published)),
             )
@@ -99,13 +183,16 @@ fn transfer_direction(record: &SyncRecord) -> Option<Direction> {
     }
 }
 
-fn begin_transfers(keys: &[String]) {
+pub(super) fn enqueue(reset: bool) {
+    let downloads = shared().downloads.clone();
+    let mut keys: Vec<String> = store().state.books.keys().cloned().collect();
+    keys.sort();
     let transfers: Vec<QueueItem> = {
         let store = store();
         keys.iter()
             .filter_map(|key| {
                 let record = &store.state.books[key];
-                transfer_direction(record).map(|direction| QueueItem {
+                transfer_direction(record, downloads.contains(key)).map(|direction| QueueItem {
                     key: key.clone(),
                     title: book_title(key, record.deleted),
                     direction: Some(direction),
@@ -116,13 +203,39 @@ fn begin_transfers(keys: &[String]) {
     };
     {
         let mut manager = shared();
-        manager.progress = (!transfers.is_empty()).then(|| Progress {
-            done: 0,
-            total: transfers.len(),
-            current: Vec::new(),
-        });
-        manager.transfers = transfers;
+        if reset {
+            manager.jobs.clear();
+            manager.active = 0;
+            manager.epubs = 0;
+            manager.transfers.clear();
+            manager.progress = None;
+        }
+        for key in keys {
+            let job = Job { key, epub: false };
+            if !manager.jobs.contains(&job) {
+                manager.jobs.push_back(job);
+            }
+        }
+        for item in transfers {
+            if manager
+                .transfers
+                .iter()
+                .any(|queued| queued.key == item.key)
+            {
+                continue;
+            }
+            manager.transfers.push(item);
+            manager
+                .progress
+                .get_or_insert(Progress {
+                    done: 0,
+                    total: 0,
+                    current: Vec::new(),
+                })
+                .total += 1;
+        }
     }
+    WAKE.notify_waiters();
     publish();
 }
 
@@ -133,13 +246,15 @@ fn set_current_transfer(key: &str) {
     publish();
 }
 
-fn finish_transfer(key: &str) {
+fn finish_transfer(key: &str, finished: bool) {
     {
         let mut manager = shared();
         if let Some(progress) = &mut manager.progress {
             progress.current.retain(|current| current != key);
         }
-        if !manager.transfers.iter().any(|item| item.key == key) {
+        if !finished || !manager.transfers.iter().any(|item| item.key == key) {
+            drop(manager);
+            publish();
             return;
         }
         if let Some(progress) = &mut manager.progress {
@@ -198,7 +313,16 @@ pub async fn download_book(
         .and_then(|record| record.files.get(&SyncFileType::Epub))
         .is_some_and(|file| file.value.is_some());
     if manager::enabled() && has_epub {
-        download_file(&key, SyncFileType::Epub, on_progress, &Listing::default()).await?;
+        shared().priority += 1;
+        let result = async {
+            let lock = lock(&key);
+            let _guard = client::cancellable(lock.lock()).await?;
+            download_file(&key, SyncFileType::Epub, on_progress, &Listing::default()).await
+        }
+        .await;
+        shared().priority -= 1;
+        WAKE.notify_waiters();
+        result?;
     }
 
     task::check_cancellation()?;

@@ -12,7 +12,7 @@ use crate::library::{self, BookMetadata};
 use crate::sync::client::GoogleDriveError;
 use crate::sync::model::{SyncError, SyncFileType};
 use crate::sync::storage;
-use crate::sync::task::{self, SyncTask};
+use crate::sync::task::SyncTask;
 
 #[tauri::command]
 pub fn gdrive_sync_start() {
@@ -67,10 +67,8 @@ pub fn gdrive_published_epub(app: AppHandle, id: String) -> bool {
 }
 
 #[tauri::command]
-pub fn gdrive_cancel_download() {
-    if let Some(download_task) = manager::shared().download_task.take() {
-        download_task.cancel();
-    }
+pub fn gdrive_download_all() {
+    manager::download_all();
 }
 
 #[tauri::command]
@@ -81,9 +79,6 @@ pub async fn gdrive_download_book(
     let book =
         library::load_metadata(&app, &id).ok_or_else(|| format!("Book {id} was not found"))?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    if let Some(previous) = manager::shared().download_task.take() {
-        previous.cancel();
-    }
     let download_task = SyncTask::spawn(async move {
         let emitter = app.clone();
         let progress_id = id.clone();
@@ -96,22 +91,13 @@ pub async fn gdrive_download_book(
                 .ok();
         };
         let result = match files::download_book(&book, &on_progress).await {
-            Ok(downloaded) if task::check_cancellation().is_ok() => Ok(Some(downloaded)),
-            Err(error)
-                if !task::is_cancelled()
-                    && !matches!(error, SyncError::Drive(GoogleDriveError::Cancelled)) =>
-            {
-                Err(error.to_string())
-            }
-            _ => Ok(None),
+            Ok(downloaded) => Ok(Some(downloaded)),
+            Err(SyncError::Drive(GoogleDriveError::Cancelled)) => Ok(None),
+            Err(error) => Err(error.to_string()),
         };
-        if !task::is_cancelled() {
-            manager::shared().download_task = None;
-            manager::start_file_sync();
-        }
+        manager::start_file_sync();
         sender.send(result).ok();
     });
-    manager::shared().download_task = Some(download_task.clone());
     download_task.start();
     receiver.await.unwrap_or(Ok(None))
 }

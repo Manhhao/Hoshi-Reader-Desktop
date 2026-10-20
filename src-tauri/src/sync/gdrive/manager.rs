@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex, MutexGuard};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -52,12 +52,23 @@ pub struct GoogleDriveSyncManager {
     file_transfer_task: Option<SyncTask>,
     poll_task: Option<SyncTask>,
     debounce_task: Option<SyncTask>,
-    pub download_task: Option<SyncTask>,
     stopped: bool,
     pub(super) unsupported_format: bool,
+    pub(super) jobs: VecDeque<Job>,
+    pub(super) active: usize,
+    pub(super) epubs: usize,
+    pub(super) priority: usize,
+    pub(super) downloads: HashSet<String>,
+    pub(super) locks: HashMap<String, Arc<tokio::sync::Mutex<()>>>,
     pub(super) transfers: Vec<QueueItem>,
     pub(super) progress: Option<Progress>,
     pub(super) book_errors: HashMap<(String, Phase), BookError>,
+}
+
+#[derive(Clone, PartialEq)]
+pub(super) struct Job {
+    pub(super) key: String,
+    pub(super) epub: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -105,6 +116,7 @@ pub struct SyncStatus {
     pub queue: Vec<QueueItem>,
     pub progress: Option<Progress>,
     pub attach_pending: bool,
+    pub missing_books: usize,
 }
 
 pub(super) fn record_book(key: &str, phase: Phase, result: SyncResult<()>) -> SyncResult<()> {
@@ -143,6 +155,7 @@ pub(super) fn store() -> MutexGuard<'static, SyncStorage> {
 }
 
 pub fn status() -> SyncStatus {
+    let missing_books = files::missing_books().len();
     let manager = shared();
     SyncStatus {
         last_sync: manager.last_sync,
@@ -151,6 +164,7 @@ pub fn status() -> SyncStatus {
         queue: queue(&manager),
         progress: manager.progress.clone(),
         attach_pending: manager.cache.attach_pending,
+        missing_books,
     }
 }
 
@@ -243,7 +257,7 @@ pub async fn pause() {
 }
 
 pub async fn stop() {
-    let (state_task, file_transfer_task, download_task) = {
+    let (state_task, file_transfer_task) = {
         let mut manager = shared();
         manager.stopped = true;
         if let Some(poll_task) = &manager.poll_task {
@@ -258,13 +272,9 @@ pub async fn stop() {
         if let Some(file_transfer_task) = &manager.file_transfer_task {
             file_transfer_task.cancel();
         }
-        if let Some(download_task) = &manager.download_task {
-            download_task.cancel();
-        }
         (
             manager.state_task.clone(),
             manager.file_transfer_task.clone(),
-            manager.download_task.clone(),
         )
     };
 
@@ -275,14 +285,11 @@ pub async fn stop() {
     if let Some(file_transfer_task) = file_transfer_task {
         file_transfer_task.value().await;
     }
-    if let Some(download_task) = download_task {
-        download_task.value().await;
-    }
 
     let mut manager = shared();
     manager.state_task = None;
     manager.file_transfer_task = None;
-    manager.download_task = None;
+    manager.downloads.clear();
     manager.transfers.clear();
     manager.progress = None;
     manager.book_errors.clear();
@@ -431,33 +438,19 @@ pub async fn sync(book: Option<BookMetadata>) {
         return;
     }
 
-    let previous_file_transfers = {
-        let mut manager = shared();
-        if let Some(debounce_task) = manager.debounce_task.take() {
-            debounce_task.cancel();
-        }
-        if book.is_none() {
-            None
-        } else {
-            manager.file_transfer_task.clone()
-        }
-    };
-    if book.is_some() {
-        if let Some(previous) = &previous {
-            previous.cancel();
-        }
-        if let Some(previous_file_transfers) = &previous_file_transfers {
-            previous_file_transfers.cancel();
-        }
+    if let Some(debounce_task) = shared().debounce_task.take() {
+        debounce_task.cancel();
+    }
+    if book.is_some()
+        && let Some(previous) = &previous
+    {
+        previous.cancel();
     }
 
     let is_book = book.is_some();
     let task = SyncTask::spawn(async move {
         if let Some(previous) = &previous {
             previous.value().await;
-        }
-        if let Some(previous_file_transfers) = &previous_file_transfers {
-            previous_file_transfers.value().await;
         }
 
         if let Err(error) = state::run(book).await
@@ -495,9 +488,7 @@ pub async fn sync(book: Option<BookMetadata>) {
         if is_book || (succeeded && pending) {
             schedule();
         }
-        if !is_book {
-            start_file_sync();
-        }
+        start_file_sync();
     }
 }
 
@@ -507,15 +498,18 @@ pub fn start_file_sync() {
         || manager.unsupported_format
         || manager.error_message.is_some()
         || manager.state_task.is_some()
-        || manager.file_transfer_task.is_some()
-        || manager.download_task.is_some()
         || manager.cache.book_folder.is_empty()
     {
         return;
     }
+    if manager.file_transfer_task.is_some() {
+        drop(manager);
+        files::enqueue(false);
+        return;
+    }
     let file_transfer_task = SyncTask::spawn(async {
         let result = files::run().await;
-        {
+        let queued = {
             let mut manager = shared();
             manager.file_transfer_task = None;
             manager.progress = None;
@@ -524,15 +518,27 @@ pub fn start_file_sync() {
             {
                 fail_run(&mut manager, error);
             }
-        }
+            !std::mem::take(&mut manager.jobs).is_empty()
+        };
         publish();
-        if result.is_ok_and(|published| published) && !task::is_cancelled() {
+        if task::is_cancelled() {
+            return;
+        }
+        if result.is_ok_and(|published| published) {
             tauri::async_runtime::spawn(sync(None));
+        } else if queued {
+            start_file_sync();
         }
     });
     manager.file_transfer_task = Some(file_transfer_task.clone());
     drop(manager);
     file_transfer_task.start();
+}
+
+pub fn download_all() {
+    let keys = files::missing_books();
+    shared().downloads.extend(keys);
+    start_file_sync();
 }
 
 pub(super) fn state_folder() -> String {

@@ -123,6 +123,7 @@ export type GoogleDriveSyncStatus = {
   queue: SyncQueueItem[];
   progress: { done: number; total: number; current: string[] } | null;
   attachPending: boolean;
+  missingBooks: number;
 };
 
 export type SyncBook = {

@@ -1,5 +1,7 @@
 <script module lang="ts">
   const downloadingBooks = $state<Record<string, number>>({});
+  let openTarget: string | null = null;
+  let menuDownloads = Promise.resolve();
 </script>
 
 <script lang="ts">
@@ -153,9 +155,10 @@
       selectedIds = selectedIds.includes(book.id) ? selectedIds.filter((selected) => selected !== book.id) : [...selectedIds, book.id];
       anchor = index;
     } else if (!book.epub) {
-      downloadBook(book);
+      openTarget = book.id;
+      downloadBook(book, true);
     } else {
-      invoke("gdrive_cancel_download");
+      openTarget = null;
       onOpen(book.id);
     }
   }
@@ -169,19 +172,27 @@
     };
   });
 
-  async function downloadBook(book: BookMetadata) {
+  async function downloadBook(book: BookMetadata, open: boolean) {
     if (downloadingBooks[book.id] !== undefined) return;
     downloadingBooks[book.id] = 0;
     try {
       const downloaded = await invoke<BookMetadata | null>("gdrive_download_book", { id: book.id });
       if (!downloaded) return;
       await onReload();
+      if (!open || openTarget !== book.id) return;
+      openTarget = null;
       const status = await invoke<GoogleDriveSyncStatus>("gdrive_sync_state");
       onOpen(downloaded.id, status.errorMessage === null);
     } catch (e) {
       toast?.show(String(e), "error");
     } finally {
       delete downloadingBooks[book.id];
+    }
+  }
+
+  function queueDownloads(books: BookMetadata[]) {
+    for (const book of books) {
+      menuDownloads = menuDownloads.then(() => downloadBook(book, false));
     }
   }
 
@@ -316,14 +327,7 @@
     authorDialog?.close();
   }
 
-  let isSyncing = $state(false);
   let toast = $state<ReturnType<typeof Toast>>();
-
-  async function syncBook(book: BookMetadata) {
-    isSyncing = true;
-    await invoke("gdrive_sync_book", { id: book.id });
-    isSyncing = false;
-  }
 
   async function showMenu(book: BookMetadata, e: MouseEvent) {
     e.preventDefault();
@@ -337,7 +341,9 @@
       return;
     }
     await popupMenu([
-      ...(syncConfig.enableSync ? [{ id: `sync-${book.id}`, text: "Sync", action: () => syncBook(book) }] : []),
+      ...(syncConfig.enableSync && !book.epub
+        ? [{ id: `download-${book.id}`, text: "Download", action: () => queueDownloads([book]) }]
+        : []),
       await Submenu.new({ text: "Move to", items: moveItems([book.id]) }),
       await Submenu.new({ text: "Mark", items: await markItems([book]) }),
       { id: `rename-${book.id}`, text: "Rename", action: () => openRename(book) },
@@ -559,15 +565,6 @@
         {#each visibleBooks as book, index (book.id)}
           {@render bookTile(book, index)}
         {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if isSyncing}
-    <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
-      <div class="flex items-center gap-3 rounded-box bg-base-100 px-6 py-4 shadow-lg">
-        <span class="loading loading-spinner loading-sm"></span>
-        <span class="text-sm">Syncing...</span>
       </div>
     </div>
   {/if}
