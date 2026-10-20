@@ -45,6 +45,10 @@ pub(super) async fn run() -> SyncResult<bool> {
     let result = task::concurrent(transfers).await;
     manager::save_cache()?;
     result?;
+    if shared().cache.replaced_root && drive::remove_replaced().await.is_ok() {
+        shared().cache.replaced_root = false;
+        manager::save_cache()?;
+    }
     Ok(listing.published.load(Ordering::SeqCst))
 }
 

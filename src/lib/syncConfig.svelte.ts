@@ -11,6 +11,8 @@ export const saveSyncConfig = store.save;
 
 export const network = $state({ online: navigator.onLine });
 
+export const attachPrompt = $state({ dismissed: false });
+
 export function configureSync() {
   return invoke("sync_configure", {
     settings: {

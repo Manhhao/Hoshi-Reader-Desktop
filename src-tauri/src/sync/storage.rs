@@ -131,6 +131,66 @@ impl SyncStorage {
         self.save_changes(true)
     }
 
+    pub fn has_data() -> bool {
+        Self::book_directories().iter().any(|root| {
+            if is_archived(root) {
+                statistics::load(root)
+                    .values()
+                    .any(|change| change.value.is_some())
+            } else {
+                library::load_metadata_at(root).is_some_and(|metadata| metadata.epub.is_some())
+            }
+        })
+    }
+
+    pub fn remove_deletion_records(&mut self) -> SyncResult<()> {
+        let mut cleared = Vec::new();
+        for root in Self::book_directories() {
+            let mut sessions = statistics::load(&root);
+            let count = sessions.len();
+            sessions.retain(|_, change| change.value.is_some());
+            if is_archived(&root) && sessions.is_empty() {
+                let key: String = root.file_name().unwrap().to_string_lossy().nfc().collect();
+                self.state.books.remove(&key);
+                cleared.push(root);
+                continue;
+            }
+            if sessions.len() != count {
+                library::write_json(&root.join(statistics::STATISTICS_FILE), &sessions)?;
+            }
+            if is_archived(&root) {
+                continue;
+            }
+
+            let mut records = highlights::load_highlight_records(&root);
+            let count = records.len();
+            records.retain(|_, change| change.value.is_some());
+            if records.len() != count {
+                highlights::save_records(&records, &root)?;
+            }
+            if let Some(mut metadata) = library::load_metadata_at(&root)
+                && let Some(shelves) = metadata.shelves.as_mut()
+            {
+                let count = shelves.len();
+                shelves.retain(|_, member| member.value);
+                if shelves.len() != count {
+                    library::save_metadata(&metadata, &root)?;
+                }
+            }
+        }
+        let mut shelves = library::load_shelf_list(app());
+        let count = shelves.len();
+        shelves.retain(|_, shelf| shelf.value.is_some());
+        if shelves.len() != count {
+            library::save_shelf_list(app(), &shelves)?;
+        }
+        self.save()?;
+        for root in cleared {
+            library::delete(&root)?;
+        }
+        Ok(())
+    }
+
     pub fn prepare_library(&mut self) -> SyncResult<()> {
         let mut empty = Vec::new();
         for root in Self::book_directories() {

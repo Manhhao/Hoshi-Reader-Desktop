@@ -10,7 +10,8 @@ use crate::sync::app;
 use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{
-    Phase, publish, record_book, reset_connection, save_cache, shared, state_folder, store,
+    Phase, publish, record_book, reset_connection, save_cache, set_attach_pending, shared,
+    state_folder, store,
 };
 use crate::sync::model::{SyncBook, SyncError, SyncResult, SyncShelves, sync_format};
 use crate::sync::storage::SyncStorage;
@@ -85,7 +86,10 @@ fn file_versions(files: &[GoogleDriveFile]) -> HashMap<String, String> {
 }
 
 pub(super) async fn run(book: Option<BookMetadata>) -> SyncResult<()> {
-    let result = sync_state(book).await;
+    let result = match sync_state(book).await {
+        Err(SyncError::AttachPending) => Ok(()),
+        result => result,
+    };
     let saved = save_cache();
     result.and(saved)
 }
@@ -199,6 +203,9 @@ async fn changes() -> SyncResult<RemoteChanges> {
                     .is_some_and(|parents| parents.contains(&state_folder))
             })
         {
+            if file.is_newer_format() && file.trashed != Some(true) {
+                return Err(SyncError::UnsupportedVersion);
+            }
             if let Some(key) = file.state_key() {
                 changed.entry(key).or_default().push(file);
             }
@@ -220,8 +227,20 @@ async fn load_layout() -> SyncResult<()> {
     let layout = drive::layout().await?;
     task::check_cancellation()?;
     let root = shared().cache.root.clone();
-    if !root.is_empty() && root != layout.root {
+    let replaced = !root.is_empty() && root != layout.root;
+    if replaced {
         reset_connection(false)?;
+    }
+    if shared().cache.root.is_empty() && SyncStorage::has_data() {
+        let files = drive::children(&layout.state, None).await?;
+        task::check_cancellation()?;
+        if files.iter().any(GoogleDriveFile::is_newer_format) {
+            return Err(SyncError::UnsupportedVersion);
+        }
+        if (replaced && !layout.created) || files.iter().any(|file| file.state_key().is_some()) {
+            set_attach_pending();
+            return Err(SyncError::AttachPending);
+        }
     }
     let mut manager = shared();
     manager.cache.root = layout.root;
@@ -235,6 +254,9 @@ async fn list_remote() -> SyncResult<HashMap<String, Vec<GoogleDriveFile>>> {
     let state_folder = shared().cache.state_folder.clone();
     let files = drive::children(&state_folder, None).await?;
     task::check_cancellation()?;
+    if files.iter().any(GoogleDriveFile::is_newer_format) {
+        return Err(SyncError::UnsupportedVersion);
+    }
     let mut grouped: HashMap<String, Vec<GoogleDriveFile>> = HashMap::new();
     for file in files {
         if let Some(key) = file.state_key() {

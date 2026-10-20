@@ -3,12 +3,14 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::Emitter;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
 use crate::statistics;
 use crate::sync::client;
+use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::{files, state};
 use crate::sync::model::{SyncBook, SyncError, SyncResult, sync_format};
 use crate::sync::storage::{self, SyncStorage};
@@ -26,6 +28,18 @@ pub struct GoogleDriveSyncCache {
     pub book_versions: HashMap<String, HashMap<String, String>>,
     #[serde(default)]
     pub book_folders: HashMap<String, String>,
+    #[serde(default)]
+    pub attach_pending: bool,
+    #[serde(default)]
+    pub replaced_root: bool,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum AttachChoice {
+    Merge,
+    Device,
+    Cloud,
 }
 
 #[derive(Default)]
@@ -90,6 +104,7 @@ pub struct SyncStatus {
     pub error_message: Option<String>,
     pub queue: Vec<QueueItem>,
     pub progress: Option<Progress>,
+    pub attach_pending: bool,
 }
 
 pub(super) fn record_book(key: &str, phase: Phase, result: SyncResult<()>) -> SyncResult<()> {
@@ -135,6 +150,7 @@ pub fn status() -> SyncStatus {
         error_message: manager.error_message.clone(),
         queue: queue(&manager),
         progress: manager.progress.clone(),
+        attach_pending: manager.cache.attach_pending,
     }
 }
 
@@ -174,7 +190,10 @@ pub(super) fn publish() {
 }
 
 fn enabled_with(manager: &GoogleDriveSyncManager) -> bool {
-    crate::sync::settings().enable_sync && auth::is_authenticated() && !manager.stopped
+    crate::sync::settings().enable_sync
+        && auth::is_authenticated()
+        && !manager.stopped
+        && !manager.cache.attach_pending
 }
 
 pub fn enabled() -> bool {
@@ -280,10 +299,79 @@ pub async fn sign_out() -> SyncResult<()> {
 
 pub async fn clear_cache() -> SyncResult<()> {
     stop().await;
-    shared().cache = GoogleDriveSyncCache::default();
+    {
+        let mut manager = shared();
+        manager.cache = GoogleDriveSyncCache {
+            root: std::mem::take(&mut manager.cache.root),
+            attach_pending: manager.cache.attach_pending,
+            replaced_root: manager.cache.replaced_root,
+            ..Default::default()
+        };
+    }
     save_cache()?;
 
     start();
+    Ok(())
+}
+
+pub(super) fn set_attach_pending() {
+    let mut manager = shared();
+    manager.cache.attach_pending = true;
+    if let Some(file_transfer_task) = &manager.file_transfer_task {
+        file_transfer_task.cancel();
+    }
+}
+
+pub async fn attach(choice: AttachChoice) -> SyncResult<()> {
+    stop().await;
+    client::resume();
+    let result = resolve_attach(choice).await;
+    start();
+    publish();
+    result
+}
+
+async fn resolve_attach(choice: AttachChoice) -> SyncResult<()> {
+    if let AttachChoice::Device = choice {
+        {
+            let mut manager = shared();
+            manager.cache.attach_pending = false;
+            manager.cache.replaced_root = true;
+        }
+        save_cache()?;
+        if let Err(error) = drive::rename_root().await {
+            shared().cache.attach_pending = true;
+            save_cache()?;
+            return Err(error.into());
+        }
+        store().remove_deletion_records()?;
+    }
+    let layout = drive::layout().await?;
+    if let AttachChoice::Cloud = choice {
+        clear_library()?;
+    }
+    {
+        let mut manager = shared();
+        manager.cache.root = layout.root;
+        manager.cache.state_folder = layout.state;
+        manager.cache.book_folder = layout.books;
+        manager.cache.attach_pending = false;
+    }
+    save_cache()
+}
+
+fn clear_library() -> SyncResult<()> {
+    for book in library::load_all_books(app()) {
+        let key: String = book.folder.nfc().collect();
+        app()
+            .emit("sync://book-replaced", json!({ "key": key }))
+            .ok();
+    }
+    let books = library::books_dir(app());
+    std::fs::remove_dir_all(&books)?;
+    std::fs::create_dir_all(&books)?;
+    store().reload();
+    storage::post_books_changed();
     Ok(())
 }
 
@@ -297,7 +385,10 @@ pub fn reset_connection(restoring_backup: bool) -> SyncResult<()> {
     store().reset_sync_state()?;
     {
         let mut manager = shared();
-        manager.cache = GoogleDriveSyncCache::default();
+        manager.cache = GoogleDriveSyncCache {
+            replaced_root: manager.cache.replaced_root,
+            ..Default::default()
+        };
         manager.unsupported_format = false;
         manager.error_message = None;
         manager.last_sync = None;

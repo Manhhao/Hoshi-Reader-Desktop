@@ -61,7 +61,7 @@
   } from "./hotkeyConfig.svelte";
   import { Sortable } from "./sortable.svelte";
   import { sasayakiConfig, saveSasayakiConfig } from "./sasayakiConfig.svelte";
-  import { configureSync, syncConfig, saveSyncConfig, syncProviders } from "./syncConfig.svelte";
+  import { attachPrompt, configureSync, syncConfig, saveSyncConfig, syncProviders } from "./syncConfig.svelte";
   import Appearance from "./Appearance.svelte";
   import About from "./About.svelte";
   import { defaultFonts } from "./readerConfig.svelte";
@@ -91,6 +91,7 @@
     errorMessage: null,
     queue: [],
     progress: null,
+    attachPending: false,
   });
   const failedBooks = $derived(driveStatus.queue.filter((item) => item.error).length);
 
@@ -1197,7 +1198,7 @@
             <div class="card-body gap-3">
               <SettingRow label="Status">
                 <span class="text-sm text-base-content/60">
-                  {syncAuthenticated ? "Connected" : "Not connected"}
+                  {syncAuthenticated ? (driveStatus.attachPending ? "Choice needed" : "Connected") : "Not connected"}
                 </span>
               </SettingRow>
               {#if syncAuthenticated}
@@ -1273,7 +1274,10 @@
                 <button
                   class="btn btn-outline btn-sm self-start"
                   disabled={driveStatus.isSyncing}
-                  onclick={() => invoke("gdrive_sync_now")}
+                  onclick={() => {
+                    attachPrompt.dismissed = false;
+                    invoke("gdrive_sync_now");
+                  }}
                 >
                   Sync Now
                 </button>

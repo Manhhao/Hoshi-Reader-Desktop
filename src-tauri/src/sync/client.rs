@@ -323,13 +323,35 @@ pub async fn download_file(
 }
 
 pub async fn trash_file(file_id: &str) -> Result<()> {
+    update_file(file_id, json!({ "trashed": true })).await
+}
+
+pub async fn rename_file(file_id: &str, name: &str) -> Result<()> {
+    update_file(file_id, json!({ "name": name })).await
+}
+
+async fn update_file(file_id: &str, metadata: Value) -> Result<()> {
     let path = format!("files/{file_id}");
     request(Request {
         path: &path,
         query: &[],
         method: Method::PATCH,
-        body: Some(json!({ "trashed": true }).to_string().into_bytes()),
+        body: Some(metadata.to_string().into_bytes()),
         content_type: Some("application/json"),
+        upload: false,
+    })
+    .await?;
+    Ok(())
+}
+
+pub async fn delete_file(file_id: &str) -> Result<()> {
+    let path = format!("files/{file_id}");
+    request(Request {
+        path: &path,
+        query: &[],
+        method: Method::DELETE,
+        body: None,
+        content_type: None,
         upload: false,
     })
     .await?;

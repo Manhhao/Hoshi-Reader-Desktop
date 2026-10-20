@@ -18,6 +18,7 @@
   import SourceList from "./lib/SourceList.svelte";
   import ChangelogDialog from "./lib/ChangelogDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
+  import AttachDialog from "./lib/AttachDialog.svelte";
   import type {
     AppView,
     BookMetadata,
@@ -354,3 +355,4 @@
 
 <ChangelogDialog />
 <UpdateDialog />
+<AttachDialog />

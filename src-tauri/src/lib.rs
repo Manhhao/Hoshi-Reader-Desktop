@@ -186,6 +186,7 @@ pub fn run() {
             sync::gdrive::gdrive_sync_stop,
             sync::gdrive::gdrive_sync_now,
             sync::gdrive::gdrive_sync_book,
+            sync::gdrive::gdrive_attach,
             sync::gdrive::gdrive_sync_state,
             sync::gdrive::gdrive_published_epub,
             sync::gdrive::gdrive_cancel_download,

@@ -41,6 +41,13 @@ pub async fn gdrive_sync_book(app: AppHandle, id: String) -> Option<BookMetadata
 }
 
 #[tauri::command]
+pub async fn gdrive_attach(choice: manager::AttachChoice) -> Result<(), String> {
+    manager::attach(choice)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn gdrive_sync_state() -> manager::SyncStatus {
     manager::status()
 }

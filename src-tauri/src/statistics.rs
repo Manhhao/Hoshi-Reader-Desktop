@@ -11,7 +11,7 @@ use crate::library::{self, APPLE_EPOCH, BookMetadata};
 use crate::sync::model::{SyncBook, Timestamped};
 use crate::ttu_statistics::TtuStatistics;
 
-const STATISTICS_FILE: &str = "statistics.json";
+pub(crate) const STATISTICS_FILE: &str = "statistics.json";
 const STATISTICS_ARCHIVE: &str = "statistics_archive";
 const STATISTICS_COVER: &str = "cover.jpg";
 

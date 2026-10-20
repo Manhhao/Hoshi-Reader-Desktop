@@ -13,6 +13,7 @@ use crate::sync::client::GoogleDriveError;
 #[derive(Debug, Clone)]
 pub enum SyncError {
     UnsupportedVersion,
+    AttachPending,
     Drive(GoogleDriveError),
     Other(String),
 }
@@ -35,6 +36,7 @@ impl fmt::Display for SyncError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SyncError::UnsupportedVersion => write!(f, "Unsupported sync format."),
+            SyncError::AttachPending => write!(f, "Choose which library to keep."),
             SyncError::Drive(error) => write!(f, "{error}"),
             SyncError::Other(message) => write!(f, "{message}"),
         }

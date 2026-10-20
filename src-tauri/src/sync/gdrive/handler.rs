@@ -1,10 +1,15 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::json;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile, Request, Result};
+use crate::sync::task;
 
+const REPLACED_ROOT: &str = "Hoshi Reader (replaced)";
 const FILE_FIELDS: &str = "id,name,mimeType,md5Checksum,size,parents,trashed,createdTime";
 
 impl GoogleDriveFile {
@@ -17,6 +22,13 @@ impl GoogleDriveFile {
             (chrono::Utc::now() - created.with_timezone(&chrono::Utc)).num_milliseconds()
                 < 86_400_000
         })
+    }
+
+    pub fn is_newer_format(&self) -> bool {
+        self.name
+            .strip_prefix(".format-")
+            .and_then(|version| version.parse::<i64>().ok())
+            .is_some_and(|version| version > 1)
     }
 
     pub fn state_key(&self) -> Option<String> {
@@ -50,6 +62,7 @@ pub struct Layout {
     pub root: String,
     pub state: String,
     pub books: String,
+    pub created: bool,
 }
 
 fn decode<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T> {
@@ -84,10 +97,52 @@ pub async fn changes(cursor: &str) -> Result<GoogleDriveChanges> {
 }
 
 pub async fn layout() -> Result<Layout> {
-    let root = folder("root", "Hoshi Reader", true).await?.unwrap();
+    let existing = folder("root", "Hoshi Reader", false).await?;
+    let created = existing.is_none();
+    let root = match existing {
+        Some(root) => root,
+        None => create_folder("root", "Hoshi Reader").await?,
+    };
     let state = folder(&root, "state", true).await?.unwrap();
     let books = folder(&root, "books", true).await?.unwrap();
-    Ok(Layout { root, state, books })
+    Ok(Layout {
+        root,
+        state,
+        books,
+        created,
+    })
+}
+
+pub async fn rename_root() -> Result<()> {
+    for folder in children("root", Some("Hoshi Reader")).await? {
+        if folder.is_folder() {
+            client::rename_file(&folder.id, REPLACED_ROOT).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn remove_replaced() -> Result<()> {
+    for folder in children("root", Some(REPLACED_ROOT)).await? {
+        delete_tree(folder.id).await?;
+    }
+    Ok(())
+}
+
+fn delete_tree(id: String) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
+    Box::pin(async move {
+        match client::delete_file(&id).await {
+            Err(GoogleDriveError::Api(_)) => {}
+            result => return result,
+        }
+        let files = children(&id, None)
+            .await?
+            .into_iter()
+            .map(|file| delete_tree(file.id))
+            .collect();
+        task::concurrent(files).await?;
+        client::delete_file(&id).await
+    })
 }
 
 pub async fn folder(parent: &str, name: &str, create: bool) -> Result<Option<String>> {
