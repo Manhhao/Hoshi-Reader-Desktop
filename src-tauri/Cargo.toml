@@ -26,7 +26,7 @@ tauri-plugin-window-state = "2"
 uuid = { version = "1.23.2", features = ["v4"] }
 regex = "1.12.3"
 unicode-segmentation = "1.13.2"
-reqwest = { version = "0.13", default-features = false, features = ["json", "form", "query", "native-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "query", "native-tls", "stream"] }
 base64 = "0.23"
 sha1 = "0.11"
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -39,8 +39,8 @@ hoshidicts = { git = "https://github.com/Manhhao/hoshidicts-rs.git", branch = "m
 mp3lame-encoder = "0.2.4"
 unicode-normalization = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tokio = { version = "1", features = ["sync", "time", "macros"] }
-tokio-util = "0.7"
+tokio = { version = "1", features = ["sync", "time", "macros", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
 opus = "0.4"
 ogg = "0.9"

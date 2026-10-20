@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 
 use reqwest::Method;
@@ -6,7 +7,9 @@ use serde::Deserialize;
 use serde_json::json;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile, Request, Result};
+use crate::sync::client::{
+    self, Body, Content, GoogleDriveError, GoogleDriveFile, Request, Result,
+};
 use crate::sync::task;
 
 const REPLACED_ROOT: &str = "Hoshi Reader (replaced)";
@@ -171,7 +174,7 @@ pub async fn create_folder(parent: &str, name: &str) -> Result<String> {
         path: "files",
         query: &[("fields", FILE_FIELDS)],
         method: Method::POST,
-        body: Some(body.to_string().into_bytes()),
+        body: Some(Body::Data(body.to_string().into_bytes())),
         content_type: Some("application/json"),
         upload: false,
     })
@@ -222,12 +225,19 @@ pub async fn read(file: &GoogleDriveFile) -> Result<Vec<u8>> {
     client::get(&format!("files/{}", file.id), &[("alt", "media")]).await
 }
 
-pub async fn upload(data: Vec<u8>, file_name: &str, folder: &str) -> Result<()> {
+pub async fn upload(path: &Path, file_name: &str, folder: &str) -> Result<()> {
     let existing = children(folder, Some(file_name)).await?;
     if !existing.is_empty() {
         return Ok(());
     }
-    client::write(data, file_name, folder, None, "application/octet-stream").await?;
+    client::write(
+        Content::File(path),
+        file_name,
+        folder,
+        None,
+        "application/octet-stream",
+    )
+    .await?;
     Ok(())
 }
 

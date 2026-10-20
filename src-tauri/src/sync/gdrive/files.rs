@@ -252,16 +252,11 @@ async fn upload_file(key: &str, file_type: SyncFileType, listing: &Listing) -> S
         file_name
     };
 
-    let data = tauri::async_runtime::spawn_blocking(move || std::fs::read(url))
-        .await
-        .map_err(|error| SyncError::Other(error.to_string()))??;
-    task::check_cancellation()?;
-
     if !can_publish(key, file_type, source, record.generation) {
         return Ok(());
     }
 
-    listing.upload(key, record.generation, &name, data).await?;
+    listing.upload(key, record.generation, &name, &url).await?;
     task::check_cancellation()?;
     if !can_publish(key, file_type, source, record.generation) {
         return Ok(());

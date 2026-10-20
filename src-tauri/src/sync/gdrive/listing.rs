@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
-use crate::sync::client::{self, GoogleDriveFile};
+use crate::sync::client::{self, Content, GoogleDriveFile};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{book_folder, shared};
 use crate::sync::model::SyncResult;
@@ -86,7 +87,7 @@ impl Listing {
         key: &str,
         generation: i64,
         name: &str,
-        data: Vec<u8>,
+        path: &Path,
     ) -> SyncResult<()> {
         let (book, folder) = self.resolve(key, generation).await?;
         let folder = match folder {
@@ -113,9 +114,16 @@ impl Listing {
             return Ok(());
         }
         if self.listed || self.created.lock().unwrap().contains(&folder) {
-            client::write(data, name, &folder, None, "application/octet-stream").await?;
+            client::write(
+                Content::File(path),
+                name,
+                &folder,
+                None,
+                "application/octet-stream",
+            )
+            .await?;
         } else {
-            drive::upload(data, name, &folder).await?;
+            drive::upload(path, name, &folder).await?;
         }
         Ok(())
     }

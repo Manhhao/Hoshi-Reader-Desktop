@@ -1,12 +1,17 @@
 use std::fmt;
+use std::io::Cursor;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use reqwest::Method;
+use reqwest::header::CONTENT_LENGTH;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
+use tokio_util::io::ReaderStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -112,11 +117,25 @@ pub async fn cancellable<T>(future: impl std::future::Future<Output = T>) -> Res
     }
 }
 
+pub enum Body<'a> {
+    Data(Vec<u8>),
+    File {
+        prefix: Vec<u8>,
+        path: &'a Path,
+        suffix: Vec<u8>,
+    },
+}
+
+pub enum Content<'a> {
+    Data(Vec<u8>),
+    File(&'a Path),
+}
+
 pub struct Request<'a> {
     pub path: &'a str,
     pub query: &'a [(&'a str, &'a str)],
     pub method: Method,
-    pub body: Option<Vec<u8>>,
+    pub body: Option<Body<'a>>,
     pub content_type: Option<&'a str>,
     pub upload: bool,
 }
@@ -190,8 +209,35 @@ async fn perform_request(
     if let Some(content_type) = request.content_type {
         builder = builder.header("Content-Type", content_type);
     }
-    if let Some(body) = &request.body {
-        builder = builder.body(body.clone());
+    match &request.body {
+        Some(Body::Data(data)) => builder = builder.body(data.clone()),
+        Some(Body::File {
+            prefix,
+            path,
+            suffix,
+        }) => {
+            let file = tokio::fs::File::open(path)
+                .await
+                .map_err(|error| GoogleDriveError::Api(error.to_string()))?;
+            let length = file
+                .metadata()
+                .await
+                .map_err(|error| GoogleDriveError::Api(error.to_string()))?
+                .len();
+            let reader = Cursor::new(prefix.clone())
+                .chain(file)
+                .chain(Cursor::new(suffix.clone()));
+            builder = builder
+                .header(
+                    CONTENT_LENGTH,
+                    prefix.len() as u64 + length + suffix.len() as u64,
+                )
+                .body(reqwest::Body::wrap_stream(ReaderStream::with_capacity(
+                    reader,
+                    256 * 1024,
+                )));
+        }
+        None => {}
     }
     let permit = cancellable(LIMIT.acquire()).await?.unwrap();
     let response = cancellable(builder.send()).await??;
@@ -253,7 +299,7 @@ async fn read_body(
 }
 
 pub async fn write(
-    data: Vec<u8>,
+    content: Content<'_>,
     name: &str,
     parent: &str,
     file_id: Option<&str>,
@@ -265,14 +311,22 @@ pub async fn write(
         json!({ "name": name })
     };
     let boundary = Uuid::new_v4().to_string().to_uppercase();
-    let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
-        .into_bytes();
-    body.extend_from_slice(metadata.to_string().as_bytes());
-    body.extend_from_slice(
+    let mut prefix =
+        format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
+            .into_bytes();
+    prefix.extend_from_slice(metadata.to_string().as_bytes());
+    prefix.extend_from_slice(
         format!("\r\n--{boundary}\r\nContent-Type: {content_type}\r\n\r\n").as_bytes(),
     );
-    body.extend_from_slice(&data);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let suffix = format!("\r\n--{boundary}--\r\n").into_bytes();
+    let body = match content {
+        Content::Data(data) => Body::Data([prefix, data, suffix].concat()),
+        Content::File(path) => Body::File {
+            prefix,
+            path,
+            suffix,
+        },
+    };
     let path = file_id.map_or_else(|| "files".to_string(), |id| format!("files/{id}"));
     let content_type = format!("multipart/related; boundary={boundary}");
     let response = request(Request {
@@ -336,7 +390,7 @@ async fn update_file(file_id: &str, metadata: Value) -> Result<()> {
         path: &path,
         query: &[],
         method: Method::PATCH,
-        body: Some(metadata.to_string().into_bytes()),
+        body: Some(Body::Data(metadata.to_string().into_bytes())),
         content_type: Some("application/json"),
         upload: false,
     })

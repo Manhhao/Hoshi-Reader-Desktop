@@ -7,7 +7,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
 use crate::sync::app;
-use crate::sync::client::{self, GoogleDriveError, GoogleDriveFile};
+use crate::sync::client::{self, Content, GoogleDriveError, GoogleDriveFile};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{
     Phase, publish, record_book, reset_connection, save_cache, set_attach_pending, shared,
@@ -376,7 +376,7 @@ async fn write_state<T: Serialize>(
     files: &[GoogleDriveFile],
 ) -> SyncResult<GoogleDriveFile> {
     let written = client::write(
-        sync_format::encode(state)?,
+        Content::Data(sync_format::encode(state)?),
         name,
         &state_folder(),
         files.first().map(|file| file.id.as_str()),
