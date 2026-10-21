@@ -120,10 +120,6 @@ impl Meter {
         }
     }
 
-    pub fn touch(&self) {
-        *self.moved.lock().unwrap() = Instant::now();
-    }
-
     pub fn idle(&self) -> Duration {
         self.moved.lock().unwrap().elapsed()
     }
@@ -536,7 +532,6 @@ async fn send_upload(
         }
         let connection = connection_id();
         let permit = cancellable(LIMIT.acquire()).await?.unwrap();
-        meter.touch();
         let response = cancellable(watch(build(&token)?.send(), meter)).await???;
         drop(permit);
         check_connection(connection)?;

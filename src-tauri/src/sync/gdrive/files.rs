@@ -146,20 +146,6 @@ fn missing_epub(record: &SyncRecord) -> bool {
         })
 }
 
-fn needs_epub_upload(record: &SyncRecord) -> bool {
-    record.attached
-        && !record.deleted
-        && record
-            .sources
-            .get(&SyncFileType::Epub)
-            .is_some_and(|&source| {
-                record
-                    .files
-                    .get(&SyncFileType::Epub)
-                    .is_none_or(|published| published.modified < source)
-            })
-}
-
 type PendingFile = (SyncFileType, Direction, Option<u64>);
 
 fn pending_files(
@@ -367,13 +353,10 @@ pub(super) fn enqueue(reset: bool) {
                 })
             })
             .collect();
-        let epubs: HashSet<String> = keys
+        let epubs: HashSet<String> = pending
             .iter()
-            .filter(|key| {
-                let record = &store.state.books[*key];
-                needs_epub_upload(record) || (downloads.contains(*key) && missing_epub(record))
-            })
-            .cloned()
+            .filter(|(_, files)| files.iter().any(|file| file.0 == SyncFileType::Epub))
+            .map(|(key, _)| key.clone())
             .collect();
         (transfers, epubs, pending)
     };
