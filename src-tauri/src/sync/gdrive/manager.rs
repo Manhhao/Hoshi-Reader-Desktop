@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -9,7 +9,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::library::{self, BookMetadata};
 use crate::statistics;
-use crate::sync::client;
+use crate::sync::client::{self, Meter};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::{files, state};
 use crate::sync::model::{SyncBook, SyncError, SyncResult, sync_format};
@@ -32,6 +32,8 @@ pub struct GoogleDriveSyncCache {
     pub attach_pending: bool,
     #[serde(default)]
     pub replaced_root: bool,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub upload_sessions: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -63,6 +65,61 @@ pub struct GoogleDriveSyncManager {
     pub(super) transfers: Vec<QueueItem>,
     pub(super) progress: Option<Progress>,
     pub(super) book_errors: HashMap<(String, Phase), BookError>,
+    pub(super) moving: HashMap<String, Moving>,
+    pub(super) interrupted: HashMap<String, Transfer>,
+    pub(super) upload_flow: Flow,
+    pub(super) download_flow: Flow,
+}
+
+pub(super) struct Moving {
+    pub(super) direction: Direction,
+    pub(super) meter: Arc<Meter>,
+    pub(super) total: u64,
+}
+
+#[derive(Default)]
+pub(super) struct Flow {
+    pub(super) done: u64,
+    pub(super) total: u64,
+    pub(super) counted: HashSet<String>,
+    speed: f64,
+    sampled: Option<(Instant, u64)>,
+    started: Option<Instant>,
+}
+
+impl Flow {
+    fn view(&self, moving: u64) -> Option<FlowView> {
+        let done = (self.done + moving).min(self.total);
+        if done >= self.total {
+            return None;
+        }
+        let remaining = self
+            .started
+            .filter(|started| started.elapsed() >= Duration::from_secs(60) && self.speed > 1.0)
+            .map(|_| ((self.total - done) as f64 / self.speed) as u64);
+        Some(FlowView {
+            done,
+            total: self.total,
+            speed: self.speed as u64,
+            remaining,
+        })
+    }
+
+    fn sample(&mut self, moving: u64) {
+        let now = Instant::now();
+        let done = self.done + moving;
+        if let Some((at, previous)) = self.sampled {
+            let elapsed = now.duration_since(at).as_secs_f64();
+            if elapsed > 0.0 {
+                let rate = done.saturating_sub(previous) as f64 / elapsed;
+                self.speed += (rate - self.speed) * (elapsed / 30.0).min(1.0);
+            }
+        }
+        if done > 0 {
+            self.started.get_or_insert(now);
+        }
+        self.sampled = Some((now, done));
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -87,11 +144,40 @@ pub(super) struct BookError {
 pub struct QueueItem {
     pub key: String,
     pub title: String,
+    pub book_id: Option<String>,
+    pub cover: bool,
+    pub size: Option<u64>,
     pub direction: Option<Direction>,
     pub error: Option<String>,
+    pub transfer: Option<Transfer>,
 }
 
 #[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct Transfer {
+    pub direction: Direction,
+    pub done: u64,
+    pub total: u64,
+    pub state: TransferState,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum TransferState {
+    Moving,
+    Interrupted,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowView {
+    pub done: u64,
+    pub total: u64,
+    pub speed: u64,
+    pub remaining: Option<u64>,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum Direction {
     Upload,
@@ -105,6 +191,8 @@ pub struct Progress {
     pub done: usize,
     pub total: usize,
     pub current: Vec<String>,
+    pub upload: Option<FlowView>,
+    pub download: Option<FlowView>,
 }
 
 #[derive(Serialize, Clone)]
@@ -162,14 +250,54 @@ pub fn status() -> SyncStatus {
         is_syncing: manager.state_task.is_some() || manager.file_transfer_task.is_some(),
         error_message: manager.error_message.clone(),
         queue: queue(&manager),
-        progress: manager.progress.clone(),
+        progress: manager.progress.clone().map(|mut progress| {
+            progress.upload = manager
+                .upload_flow
+                .view(moving(&manager, Direction::Upload));
+            progress.download = manager
+                .download_flow
+                .view(moving(&manager, Direction::Download));
+            progress
+        }),
         attach_pending: manager.cache.attach_pending,
         missing_books,
     }
 }
 
+fn moving(manager: &GoogleDriveSyncManager, direction: Direction) -> u64 {
+    manager
+        .moving
+        .values()
+        .filter(|moving| moving.direction == direction)
+        .map(|moving| moving.meter.bytes())
+        .sum()
+}
+
+pub(super) fn sample() {
+    let mut manager = shared();
+    let up = moving(&manager, Direction::Upload);
+    let down = moving(&manager, Direction::Download);
+    manager.upload_flow.sample(up);
+    manager.download_flow.sample(down);
+}
+
+fn transfer(manager: &GoogleDriveSyncManager, key: &str) -> Option<Transfer> {
+    if let Some(moving) = manager.moving.get(key) {
+        return Some(Transfer {
+            direction: moving.direction,
+            done: moving.meter.bytes().min(moving.total),
+            total: moving.total,
+            state: TransferState::Moving,
+        });
+    }
+    manager.interrupted.get(key).copied()
+}
+
 fn queue(manager: &GoogleDriveSyncManager) -> Vec<QueueItem> {
     let mut queue = manager.transfers.clone();
+    for item in &mut queue {
+        item.transfer = transfer(manager, &item.key);
+    }
     let mut errors: Vec<_> = manager.book_errors.iter().collect();
     errors.sort_by(|a, b| a.0.cmp(b.0));
     for ((key, _), error) in errors {
@@ -180,8 +308,12 @@ fn queue(manager: &GoogleDriveSyncManager) -> Vec<QueueItem> {
             None => queue.push(QueueItem {
                 key: key.clone(),
                 title: error.title.clone(),
+                book_id: None,
+                cover: false,
+                size: None,
                 direction: None,
                 error: Some(error.message.clone()),
+                transfer: None,
             }),
         }
     }
@@ -293,6 +425,8 @@ pub async fn stop() {
     manager.transfers.clear();
     manager.progress = None;
     manager.book_errors.clear();
+    manager.moving.clear();
+    manager.interrupted.clear();
     drop(manager);
     publish();
 }

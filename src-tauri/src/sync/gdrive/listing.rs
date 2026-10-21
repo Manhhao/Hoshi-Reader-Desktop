@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
-use crate::sync::client::{self, Content, GoogleDriveFile};
+use crate::sync::client::{self, Content, GoogleDriveFile, Meter};
 use crate::sync::gdrive::handler as drive;
 use crate::sync::gdrive::manager::{book_folder, shared};
 use crate::sync::model::SyncResult;
@@ -88,6 +88,8 @@ impl Listing {
         generation: i64,
         name: &str,
         path: &Path,
+        meter: &Arc<Meter>,
+        resumable: bool,
     ) -> SyncResult<()> {
         let (book, folder) = self.resolve(key, generation).await?;
         let folder = match folder {
@@ -113,9 +115,14 @@ impl Listing {
         if self.file(&folder, name).is_some() {
             return Ok(());
         }
-        if self.listed || self.created.lock().unwrap().contains(&folder) {
+        let known = self.listed || self.created.lock().unwrap().contains(&folder);
+        if resumable {
+            if known || drive::children(&folder, Some(name)).await?.is_empty() {
+                drive::upload_resumable(path, name, &folder, meter).await?;
+            }
+        } else if known {
             client::write(
-                Content::File(path),
+                Content::File(path, meter),
                 name,
                 &folder,
                 None,
@@ -123,7 +130,7 @@ impl Listing {
             )
             .await?;
         } else {
-            drive::upload(path, name, &folder).await?;
+            drive::upload(path, name, &folder, meter).await?;
         }
         Ok(())
     }
@@ -217,6 +224,16 @@ impl Listing {
             .cache
             .book_folders
             .insert(cache_key(key, generation), folder.to_string());
+    }
+
+    pub fn size(&self, key: &str, generation: i64, name: &str) -> Option<u64> {
+        let folder = self
+            .folders
+            .lock()
+            .unwrap()
+            .get(&(key.to_string(), generation))
+            .cloned()?;
+        self.file(&folder, name)?.size?.parse().ok()
     }
 
     fn file(&self, folder: &str, name: &str) -> Option<GoogleDriveFile> {

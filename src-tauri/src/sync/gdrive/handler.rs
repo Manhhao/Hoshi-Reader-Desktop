@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use reqwest::Method;
 use serde::Deserialize;
@@ -8,8 +9,9 @@ use serde_json::json;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::sync::client::{
-    self, Body, Content, GoogleDriveError, GoogleDriveFile, Request, Result,
+    self, Body, Content, GoogleDriveError, GoogleDriveFile, Meter, Request, Result, Upload,
 };
+use crate::sync::gdrive::manager::{save_cache, shared};
 use crate::sync::task;
 
 const REPLACED_ROOT: &str = "Hoshi Reader (replaced)";
@@ -225,13 +227,13 @@ pub async fn read(file: &GoogleDriveFile) -> Result<Vec<u8>> {
     client::get(&format!("files/{}", file.id), &[("alt", "media")]).await
 }
 
-pub async fn upload(path: &Path, file_name: &str, folder: &str) -> Result<()> {
+pub async fn upload(path: &Path, file_name: &str, folder: &str, meter: &Arc<Meter>) -> Result<()> {
     let existing = children(folder, Some(file_name)).await?;
     if !existing.is_empty() {
         return Ok(());
     }
     client::write(
-        Content::File(path),
+        Content::File(path, meter),
         file_name,
         folder,
         None,
@@ -239,6 +241,57 @@ pub async fn upload(path: &Path, file_name: &str, folder: &str) -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+pub async fn upload_resumable(
+    path: &Path,
+    file_name: &str,
+    folder: &str,
+    meter: &Arc<Meter>,
+) -> Result<()> {
+    let metadata =
+        std::fs::metadata(path).map_err(|error| GoogleDriveError::Api(error.to_string()))?;
+    let total = metadata.len();
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |modified| modified.as_millis());
+    let key = format!("{folder}/{file_name}/{total}/{modified}");
+    let saved = shared().cache.upload_sessions.get(&key).cloned();
+    let (session, mut offset) = match saved {
+        Some(session) => match client::upload_status(&session, total).await? {
+            Upload::Done => return finish_session(&key),
+            Upload::Received(offset) => (session, offset),
+            Upload::Expired => (client::start_upload(file_name, folder, total).await?, 0),
+        },
+        None => (client::start_upload(file_name, folder, total).await?, 0),
+    };
+    shared()
+        .cache
+        .upload_sessions
+        .insert(key.clone(), session.clone());
+    save_cache().map_err(|error| GoogleDriveError::Api(error.to_string()))?;
+    for _ in 0..3 {
+        match client::upload_from(&session, path, offset, total, meter).await? {
+            Upload::Done => return finish_session(&key),
+            Upload::Received(received) => offset = received,
+            Upload::Expired => {
+                finish_session(&key)?;
+                return Err(GoogleDriveError::Api(
+                    "The upload expired and will start over.".to_string(),
+                ));
+            }
+        }
+    }
+    Err(GoogleDriveError::Unavailable(
+        "The upload was interrupted.".to_string(),
+    ))
+}
+
+fn finish_session(key: &str) -> Result<()> {
+    shared().cache.upload_sessions.remove(key);
+    save_cache().map_err(|error| GoogleDriveError::Api(error.to_string()))
 }
 
 pub async fn download(

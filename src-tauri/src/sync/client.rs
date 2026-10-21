@@ -1,15 +1,17 @@
 use std::fmt;
 use std::io::Cursor;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 use reqwest::Method;
 use reqwest::header::CONTENT_LENGTH;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio::sync::Semaphore;
 use tokio_util::io::ReaderStream;
 use tokio_util::sync::CancellationToken;
@@ -85,6 +87,82 @@ static SESSION_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap()
 });
 
+static UPLOAD_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap()
+});
+
+const STALL_LIMIT: Duration = Duration::from_secs(150);
+
+pub struct Meter {
+    bytes: AtomicU64,
+    moved: Mutex<Instant>,
+}
+
+impl Meter {
+    pub fn new() -> Arc<Meter> {
+        Arc::new(Meter {
+            bytes: AtomicU64::new(0),
+            moved: Mutex::new(Instant::now()),
+        })
+    }
+
+    pub fn bytes(&self) -> u64 {
+        self.bytes.load(Ordering::SeqCst)
+    }
+
+    pub fn set(&self, bytes: u64) {
+        if self.bytes.swap(bytes, Ordering::SeqCst) != bytes {
+            *self.moved.lock().unwrap() = Instant::now();
+        }
+    }
+
+    pub fn touch(&self) {
+        *self.moved.lock().unwrap() = Instant::now();
+    }
+
+    pub fn idle(&self) -> Duration {
+        self.moved.lock().unwrap().elapsed()
+    }
+}
+
+struct Counted<R> {
+    inner: R,
+    meter: Arc<Meter>,
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for Counted<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let poll = Pin::new(&mut self.inner).poll_read(cx, buf);
+        let read = (buf.filled().len() - before) as u64;
+        if read > 0 {
+            self.meter.set(self.meter.bytes() + read);
+        }
+        poll
+    }
+}
+
+async fn watch<T>(future: impl std::future::Future<Output = T>, meter: &Meter) -> Result<T> {
+    tokio::select! {
+        value = future => Ok(value),
+        _ = async {
+            while meter.idle() < STALL_LIMIT {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        } => Err(GoogleDriveError::Unavailable(
+            "The upload stopped making progress.".to_string(),
+        )),
+    }
+}
+
 pub fn connection_id() -> u64 {
     CONNECTION_ID.load(Ordering::SeqCst)
 }
@@ -123,12 +201,13 @@ pub enum Body<'a> {
         prefix: Vec<u8>,
         path: &'a Path,
         suffix: Vec<u8>,
+        meter: Arc<Meter>,
     },
 }
 
 pub enum Content<'a> {
     Data(Vec<u8>),
-    File(&'a Path),
+    File(&'a Path, &'a Arc<Meter>),
 }
 
 pub struct Request<'a> {
@@ -202,7 +281,17 @@ async fn perform_request(
         if request.upload { "upload/" } else { "" },
         request.path
     );
-    let mut builder = SESSION_CLIENT
+    let uploading = matches!(request.body, Some(Body::File { .. }));
+    let client = if uploading {
+        &UPLOAD_CLIENT
+    } else {
+        &SESSION_CLIENT
+    };
+    let meter = match &request.body {
+        Some(Body::File { meter, .. }) => meter.clone(),
+        _ => Meter::new(),
+    };
+    let mut builder = client
         .request(request.method.clone(), url)
         .query(request.query)
         .bearer_auth(&token);
@@ -215,6 +304,7 @@ async fn perform_request(
             prefix,
             path,
             suffix,
+            ..
         }) => {
             let file = tokio::fs::File::open(path)
                 .await
@@ -225,7 +315,10 @@ async fn perform_request(
                 .map_err(|error| GoogleDriveError::Api(error.to_string()))?
                 .len();
             let reader = Cursor::new(prefix.clone())
-                .chain(file)
+                .chain(Counted {
+                    inner: file,
+                    meter: meter.clone(),
+                })
                 .chain(Cursor::new(suffix.clone()));
             builder = builder
                 .header(
@@ -239,12 +332,16 @@ async fn perform_request(
         }
         None => {}
     }
-    let permit = if on_progress.is_some() || matches!(request.body, Some(Body::File { .. })) {
+    let permit = if on_progress.is_some() {
         None
     } else {
         Some(cancellable(LIMIT.acquire()).await?.unwrap())
     };
-    let response = cancellable(builder.send()).await??;
+    let response = if uploading {
+        cancellable(watch(builder.send(), &meter)).await???
+    } else {
+        cancellable(builder.send()).await??
+    };
     check_connection(connection)?;
     crate::sync::task::check_cancellation()?;
 
@@ -325,10 +422,11 @@ pub async fn write(
     let suffix = format!("\r\n--{boundary}--\r\n").into_bytes();
     let body = match content {
         Content::Data(data) => Body::Data([prefix, data, suffix].concat()),
-        Content::File(path) => Body::File {
+        Content::File(path, meter) => Body::File {
             prefix,
             path,
             suffix,
+            meter: meter.clone(),
         },
     };
     let path = file_id.map_or_else(|| "files".to_string(), |id| format!("files/{id}"));
@@ -414,4 +512,165 @@ pub async fn delete_file(file_id: &str) -> Result<()> {
     })
     .await?;
     Ok(())
+}
+
+pub enum Upload {
+    Done,
+    Received(u64),
+    Expired,
+}
+
+async fn send_upload(
+    build: impl Fn(&str) -> Result<reqwest::RequestBuilder>,
+    meter: &Meter,
+) -> Result<reqwest::Response> {
+    let mut token = auth::access_token().map_err(GoogleDriveError::Unavailable)?;
+    for attempt in 0..5u32 {
+        if STOPPED.load(Ordering::SeqCst) {
+            return Err(GoogleDriveError::Cancelled);
+        }
+        if !crate::sync::settings().online {
+            return Err(GoogleDriveError::Unavailable(
+                "No Internet connection.".to_string(),
+            ));
+        }
+        let connection = connection_id();
+        let permit = cancellable(LIMIT.acquire()).await?.unwrap();
+        meter.touch();
+        let response = cancellable(watch(build(&token)?.send(), meter)).await???;
+        drop(permit);
+        check_connection(connection)?;
+        crate::sync::task::check_cancellation()?;
+        let status = response.status().as_u16();
+        if status == 401 && attempt == 0 {
+            token = auth::refresh_access_token()
+                .await
+                .map_err(GoogleDriveError::unavailable)?;
+            continue;
+        }
+        if (status == 429 || status == 403) && attempt < 4 {
+            let error: Value =
+                serde_json::from_slice(&cancellable(response.bytes()).await??).unwrap_or_default();
+            if is_transient(&Method::PUT, status, &error) {
+                let jitter = Uuid::new_v4().as_u128() % BACKOFF.as_millis();
+                crate::sync::task::sleep(
+                    BACKOFF * 2u32.pow(attempt) + Duration::from_millis(jitter as u64),
+                )
+                .await?;
+                continue;
+            }
+            let message = error["error"]["message"]
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Request failed with status {status}"));
+            return Err(GoogleDriveError::Api(message));
+        }
+        return Ok(response);
+    }
+    Err(GoogleDriveError::Unavailable(
+        "Too many requests.".to_string(),
+    ))
+}
+
+pub async fn start_upload(name: &str, parent: &str, total: u64) -> Result<String> {
+    let body = json!({ "name": name, "parents": [parent] }).to_string();
+    let response = send_upload(
+        |token| {
+            Ok(UPLOAD_CLIENT
+                .post("https://www.googleapis.com/upload/drive/v3/files")
+                .query(&[("uploadType", "resumable")])
+                .bearer_auth(token)
+                .header("Content-Type", "application/json; charset=UTF-8")
+                .header("X-Upload-Content-Type", "application/octet-stream")
+                .header("X-Upload-Content-Length", total)
+                .body(body.clone()))
+        },
+        &Meter::new(),
+    )
+    .await?;
+    let status = response.status().as_u16();
+    match response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+    {
+        Some(location) if status < 300 => Ok(location.to_string()),
+        _ => Err(GoogleDriveError::Api(format!(
+            "Request failed with status {status}"
+        ))),
+    }
+}
+
+pub async fn upload_status(session: &str, total: u64) -> Result<Upload> {
+    let response = send_upload(
+        |token| {
+            Ok(UPLOAD_CLIENT
+                .put(session)
+                .bearer_auth(token)
+                .header("Content-Range", format!("bytes */{total}"))
+                .header(CONTENT_LENGTH, 0))
+        },
+        &Meter::new(),
+    )
+    .await?;
+    upload_result(response).await
+}
+
+pub async fn upload_from(
+    session: &str,
+    path: &Path,
+    offset: u64,
+    total: u64,
+    meter: &Arc<Meter>,
+) -> Result<Upload> {
+    let response = send_upload(
+        |token| {
+            meter.set(offset);
+            let mut file = std::fs::File::open(path)
+                .map_err(|error| GoogleDriveError::Api(error.to_string()))?;
+            std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(offset))
+                .map_err(|error| GoogleDriveError::Api(error.to_string()))?;
+            Ok(UPLOAD_CLIENT
+                .put(session)
+                .bearer_auth(token)
+                .header(
+                    "Content-Range",
+                    format!("bytes {offset}-{}/{total}", total.saturating_sub(1)),
+                )
+                .header(CONTENT_LENGTH, total - offset)
+                .body(reqwest::Body::wrap_stream(ReaderStream::with_capacity(
+                    Counted {
+                        inner: tokio::fs::File::from_std(file),
+                        meter: meter.clone(),
+                    },
+                    64 * 1024,
+                ))))
+        },
+        meter,
+    )
+    .await?;
+    if response.status().is_server_error() {
+        return upload_status(session, total).await;
+    }
+    upload_result(response).await
+}
+
+async fn upload_result(response: reqwest::Response) -> Result<Upload> {
+    let status = response.status().as_u16();
+    let received = response
+        .headers()
+        .get("range")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.rsplit('-').next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map_or(0, |last| last + 1);
+    cancellable(response.bytes()).await??;
+    match status {
+        200 | 201 => Ok(Upload::Done),
+        308 => Ok(Upload::Received(received)),
+        404 | 410 => Ok(Upload::Expired),
+        status => Err(GoogleDriveError::Api(format!(
+            "Request failed with status {status}"
+        ))),
+    }
 }

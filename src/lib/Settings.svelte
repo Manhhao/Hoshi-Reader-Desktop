@@ -37,7 +37,11 @@
     AnkiCardFormat,
     AnkiSettings,
     GoogleDriveSyncStatus,
+    SyncFlow,
+    SyncTransfer,
   } from "./types";
+  import BookCover from "./BookCover.svelte";
+  import { schemeUrl } from "./scheme";
   import {
     dictConfig,
     dictionaryUpdate,
@@ -95,6 +99,48 @@
     missingBooks: 0,
   });
   const failedBooks = $derived(driveStatus.queue.filter((item) => item.error).length);
+  const flows = $derived.by(() => {
+    const result: { label: string; flow: SyncFlow }[] = [];
+    if (driveStatus.progress?.upload) result.push({ label: "Uploading", flow: driveStatus.progress.upload });
+    if (driveStatus.progress?.download) result.push({ label: "Downloading", flow: driveStatus.progress.download });
+    return result;
+  });
+
+  function byteAmount(done: number, total: number) {
+    if (total >= 1e6) return `${(done / 1e6).toFixed(1)} of ${(total / 1e6).toFixed(1)} MB`;
+    return `${Math.round(done / 1e3)} of ${Math.max(1, Math.round(total / 1e3))} KB`;
+  }
+
+  function byteSize(bytes: number) {
+    return bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+  }
+
+  function byteSpeed(bytes: number) {
+    return bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB/s` : `${Math.round(bytes / 1e3)} KB/s`;
+  }
+
+  function timeLeft(seconds: number) {
+    return seconds < 60 ? "less than 1 min left" : `about ${Math.ceil(seconds / 60)} min left`;
+  }
+
+  function transferText(transfer: SyncTransfer) {
+    if (transfer.state === "interrupted") return "Connection lost";
+    return byteAmount(transfer.done, transfer.total);
+  }
+
+  const queueSections = $derived.by(() => {
+    const current = driveStatus.progress?.current ?? [];
+    const failed = driveStatus.queue.filter((item) => item.error);
+    const inProgress = driveStatus.queue.filter(
+      (item) => !item.error && (item.transfer || current.includes(item.key)),
+    );
+    const upNext = driveStatus.queue.filter((item) => !item.error && !inProgress.includes(item));
+    return [
+      { label: "Syncing", items: inProgress, more: 0 },
+      { label: "Waiting", items: upNext.slice(0, 5), more: Math.max(upNext.length - 5, 0) },
+      { label: "Failed", items: failed, more: 0 },
+    ].filter((section) => section.items.length > 0);
+  });
 
   const lastSyncFormat = new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -1268,13 +1314,26 @@
                       <ChevronRight class="size-4 text-base-content/60" />
                     </span>
                   </span>
-                  {#if driveStatus.progress}
+                  {#if driveStatus.progress && flows.length === 0}
                     <progress
                       class="progress w-full"
                       value={driveStatus.progress.done}
                       max={driveStatus.progress.total}
                     ></progress>
                   {/if}
+                  {#each flows as { label, flow } (label)}
+                    <span class="flex flex-col gap-1 text-xs text-base-content/60">
+                      <span class="flex items-center justify-between">
+                        {label}
+                        <span class="tabular-nums">{byteSpeed(flow.speed)}</span>
+                      </span>
+                      <progress class="progress w-full" value={flow.done} max={flow.total}></progress>
+                      <span class="flex items-center justify-between tabular-nums">
+                        {byteAmount(flow.done, flow.total)}
+                        <span>{flow.remaining === null ? "" : timeLeft(flow.remaining)}</span>
+                      </span>
+                    </span>
+                  {/each}
                 </button>
                 {#if driveStatus.errorMessage}
                   <p class="select-text whitespace-pre-line text-xs text-error">
@@ -1782,30 +1841,61 @@
             All Books Synced
           </div>
         {:else}
-          <ul class="list min-h-0 overflow-y-auto rounded-box border border-base-300">
-            {#each driveStatus.queue as item (item.key)}
-              <li class="list-row items-center">
-                <div class="list-col-grow min-w-0">
-                  <div class="flex items-center gap-1.5 text-sm">
-                    {#if item.direction === "upload"}
-                      <ArrowUp class="size-3.5 shrink-0 text-base-content/60" />
-                    {:else if item.direction === "download"}
-                      <ArrowDown class="size-3.5 shrink-0 text-base-content/60" />
-                    {:else if item.direction === "both"}
-                      <ArrowUpDown class="size-3.5 shrink-0 text-base-content/60" />
-                    {/if}
-                    <span class="truncate">{item.title}</span>
-                  </div>
-                  {#if item.error}
-                    <div class="select-text whitespace-pre-line text-xs text-error">{item.error}</div>
+          <div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            {#each queueSections as section (section.label)}
+              <div class="flex flex-col gap-1">
+                <h4 class="px-1 text-xs font-medium text-base-content/60">{section.label}</h4>
+                <ul class="list rounded-box border border-base-300">
+                  {#each section.items as item (item.key)}
+                    {@const direction = item.transfer?.state === "interrupted" ? item.direction : (item.transfer?.direction ?? item.direction)}
+                    <li class="list-row items-center gap-3">
+                      <div class="aspect-[2/3] w-8 shrink-0 overflow-hidden rounded-sm">
+                        <BookCover
+                          title={item.title}
+                          src={item.cover && item.bookId ? schemeUrl("cover", item.bookId) + "?w=128" : null}
+                        />
+                      </div>
+                      <div class="list-col-grow min-w-0">
+                        <div class="flex items-center gap-1.5 text-sm">
+                          {#if direction === "upload"}
+                            <ArrowUp class="size-3.5 shrink-0 text-base-content/60" />
+                          {:else if direction === "download"}
+                            <ArrowDown class="size-3.5 shrink-0 text-base-content/60" />
+                          {:else if direction === "both"}
+                            <ArrowUpDown class="size-3.5 shrink-0 text-base-content/60" />
+                          {/if}
+                          <span class="truncate">{item.title}</span>
+                        </div>
+                        {#if !item.transfer && !item.error && item.size !== null}
+                          <div class="text-xs tabular-nums text-base-content/60">{byteSize(item.size)}</div>
+                        {/if}
+                        {#if item.transfer}
+                          <progress
+                            class={["progress mt-1.5 h-1.5 w-full", item.transfer.state === "moving" && "progress-primary"]}
+                            value={item.transfer.done}
+                            max={Math.max(item.transfer.total, 1)}
+                          ></progress>
+                          <div class="flex items-center justify-between gap-2 text-xs tabular-nums text-base-content/60">
+                            <span class="truncate">{transferText(item.transfer)}</span>
+                            <span>{Math.floor((item.transfer.done / Math.max(item.transfer.total, 1)) * 100)}%</span>
+                          </div>
+                        {/if}
+                        {#if item.error}
+                          <div class="select-text whitespace-pre-line text-xs text-error">{item.error}</div>
+                        {/if}
+                      </div>
+                      {#if !item.transfer && driveStatus.progress?.current.includes(item.key)}
+                        <span class="loading loading-spinner loading-xs"></span>
+                      {/if}
+                    </li>
+                  {/each}
+                  {#if section.more > 0}
+                    <li class="list-row justify-center text-xs text-base-content/60">{section.more} more</li>
                   {/if}
-                </div>
-                {#if driveStatus.progress?.current.includes(item.key)}
-                  <span class="loading loading-spinner loading-xs"></span>
-                {/if}
-              </li>
+                </ul>
+              </div>
             {/each}
-          </ul>
+          </div>
         {/if}
       </div>
 

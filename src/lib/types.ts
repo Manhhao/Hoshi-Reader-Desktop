@@ -109,11 +109,29 @@ export type SasayakiPlayback = {
   audioPath?: string | null;
 };
 
+export type SyncTransfer = {
+  direction: "upload" | "download";
+  done: number;
+  total: number;
+  state: "moving" | "interrupted";
+};
+
+export type SyncFlow = {
+  done: number;
+  total: number;
+  speed: number;
+  remaining: number | null;
+};
+
 export type SyncQueueItem = {
   key: string;
   title: string;
+  bookId: string | null;
+  cover: boolean;
+  size: number | null;
   direction: "upload" | "download" | "both" | null;
   error: string | null;
+  transfer: SyncTransfer | null;
 };
 
 export type GoogleDriveSyncStatus = {
@@ -121,7 +139,13 @@ export type GoogleDriveSyncStatus = {
   isSyncing: boolean;
   errorMessage: string | null;
   queue: SyncQueueItem[];
-  progress: { done: number; total: number; current: string[] } | null;
+  progress: {
+    done: number;
+    total: number;
+    current: string[];
+    upload: SyncFlow | null;
+    download: SyncFlow | null;
+  } | null;
   attachPending: boolean;
   missingBooks: number;
 };
