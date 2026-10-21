@@ -1276,6 +1276,7 @@
       .filter(
         (binding) =>
           binding.key === "toggleTracking" ||
+          (binding.key === "manualBookmark" && !continuous) ||
           (binding.section === "Sasayaki" && sasayaki?.hasAudio) ||
           (binding.section === "Popup" && popups.length > 0),
       )
@@ -1298,6 +1299,7 @@
     if (repeat || !readerShortcutKeys.includes(key)) return;
     if (key === "F11") toggleFullscreen();
     else if (key === hotkeyConfig.toggleTracking) toggleTracking();
+    else if (key === hotkeyConfig.manualBookmark) postToFrame({ hoshi: "bookmark-mode" });
     else if (key === hotkeyConfig.sasayakiPlayback) toggleSasayakiPlayback();
     else if (key === hotkeyConfig.sasayakiPreviousCue) sasayaki?.prevCue();
     else if (key === hotkeyConfig.sasayakiNextCue) sasayaki?.nextCue();

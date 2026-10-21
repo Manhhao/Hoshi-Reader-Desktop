@@ -434,6 +434,126 @@
     parent.postMessage({ hoshi: "progress", frac: position, jump }, "*");
   }
 
+  let bookmarking = false;
+  let bookmarkTarget = null;
+  let bookmarkTints = [];
+  const bookmarkCursorStyle = document.createElement("style");
+  bookmarkCursorStyle.textContent =
+    "html.hoshi-bookmarking, html.hoshi-bookmarking * { cursor: crosshair !important; }";
+  document.head.appendChild(bookmarkCursorStyle);
+
+  function rectContains(rect, x, y) {
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
+  function bookmarkContainerAt({ x, y }) {
+    const paragraph = document.elementFromPoint(x, y)?.closest("p");
+    const container = paragraph?.textContent.trim()
+      ? paragraph
+      : window.hoshiSelection.getCharacterAtPoint(x, y)?.node.parentElement;
+    if (!container) return null;
+    return bookmarkBoxes(container).some((box) => rectContains(box, x, y)) ? container : null;
+  }
+
+  function bookmarkProgress(container) {
+    const walker = r.createWalker();
+    let total = 0;
+    let start = null;
+    let node;
+    while ((node = walker.nextNode())) {
+      const length = r.countChars(node.textContent);
+      if (start === null && length && container.contains(node)) start = total;
+      total += length;
+    }
+    return start === null ? null : Math.max(0, start - 0.5) / total;
+  }
+
+  function bookmarkBoxes(container) {
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    const textRects = [...range.getClientRects()].filter((rect) => rect.width && rect.height);
+
+    return [...container.getClientRects()].flatMap((box) => {
+      const rects = textRects.filter((rect) =>
+        rectContains(box, (rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2),
+      );
+      if (!rects.length) return [];
+      return [
+        {
+          left: Math.min(...rects.map((rect) => rect.left)),
+          right: Math.max(...rects.map((rect) => rect.right)),
+          top: Math.min(...rects.map((rect) => rect.top)),
+          bottom: Math.max(...rects.map((rect) => rect.bottom)),
+        },
+      ];
+    });
+  }
+
+  function createBookmarkTints(container) {
+    return bookmarkBoxes(container).map(({ left, right, top, bottom }) => {
+      const tint = document.createElement("div");
+      tint.style.cssText =
+        "position: fixed; z-index: -1; pointer-events: none; background: rgba(160, 160, 160, 0.2);" +
+        `left: ${left}px; top: ${top}px; width: ${right - left}px; height: ${bottom - top}px;`;
+      document.documentElement.appendChild(tint);
+      return tint;
+    });
+  }
+
+  function showBookmarkTarget(container) {
+    if (container === bookmarkTarget) return;
+    bookmarkTarget = container;
+    bookmarkTints.forEach((tint) => tint.remove());
+    bookmarkTints = container ? createBookmarkTints(container) : [];
+  }
+
+  function setBookmarking(enabled) {
+    bookmarking = enabled;
+    document.documentElement.classList.toggle("hoshi-bookmarking", enabled);
+    if (enabled) {
+      window.hoshiSelection.clearSelection();
+    } else {
+      showBookmarkTarget(null);
+    }
+  }
+
+  function swallowBookmarkEvent(e) {
+    if (!bookmarking) return false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return true;
+  }
+
+  function onBookmarkMove(e) {
+    if (!bookmarking) return;
+    e.stopImmediatePropagation();
+    showBookmarkTarget(bookmarkContainerAt({ x: e.clientX, y: e.clientY }));
+  }
+
+  function onBookmarkRelease(e) {
+    if (!swallowBookmarkEvent(e)) return;
+    if (e.button === 0) {
+      const container = bookmarkContainerAt({ x: e.clientX, y: e.clientY });
+      const progress = container && bookmarkProgress(container);
+      if (progress === null) return;
+      commitProgress(progress, true);
+    }
+    setTimeout(() => setBookmarking(false));
+  }
+
+  function onBookmarkKey(e) {
+    if (e.key === "Escape" && swallowBookmarkEvent(e)) setBookmarking(false);
+  }
+
+  window.addEventListener("mousemove", onBookmarkMove, true);
+  window.addEventListener("mouseup", onBookmarkRelease, true);
+  window.addEventListener("keydown", onBookmarkKey, true);
+  for (const type of ["mousedown", "click", "dblclick", "auxclick", "contextmenu"]) {
+    window.addEventListener(type, swallowBookmarkEvent, true);
+  }
+  window.addEventListener("resize", () => showBookmarkTarget(null));
+  document.body.addEventListener("scroll", () => showBookmarkTarget(null), { passive: true });
+
   window.addEventListener("message", (e) => {
     const m = e.data;
     switch (m?.hoshi) {
@@ -442,6 +562,9 @@
         break;
       case "turn":
         turn(m.dir);
+        break;
+      case "bookmark-mode":
+        if (restored) setBookmarking(!bookmarking);
         break;
       case "restore":
         position = m.progress;

@@ -14,6 +14,7 @@ export type HotkeyConfig = {
   sasayakiRepeatCue: string;
   sasayakiPlayback: string;
   toggleTracking: string;
+  manualBookmark: string;
   mineEntry1: string;
   mineEntry2: string;
   mineEntry3: string;
@@ -36,6 +37,7 @@ const defaults: HotkeyConfig = {
   sasayakiRepeatCue: "'",
   sasayakiPlayback: " ",
   toggleTracking: "p",
+  manualBookmark: "t",
   mineEntry1: "",
   mineEntry2: "",
   mineEntry3: "",
@@ -52,6 +54,7 @@ export const readerHotkeys = [
   { key: "sasayakiRepeatCue", label: "Repeat Cue", section: "Sasayaki" },
   { key: "sasayakiPlayback", label: "Play / Pause", section: "Sasayaki" },
   { key: "toggleTracking", label: "Pause / Resume Statistics", section: "Reader" },
+  { key: "manualBookmark", label: "Manual Bookmark", section: "Reader" },
   { key: "previousPage", label: "Previous Page", section: "Reader" },
   { key: "nextPage", label: "Next Page", section: "Reader" },
   { key: "mineEntry1", label: "Mine Format 1", section: "Popup" },
