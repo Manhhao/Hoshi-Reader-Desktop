@@ -926,21 +926,60 @@
   });
 
   let windowFocused = $state(true);
+  let idle = $state(false);
+  let lastActivity = Date.now();
   const statsActive = $derived(
-    windowFocused || (sasayakiConfig.sasayakiBackgroundStatistics && !!sasayaki?.isPlaying),
+    !idle &&
+      (windowFocused ||
+        !statsConfig.statisticsPauseInBackground ||
+        (sasayakiConfig.sasayakiBackgroundStatistics && !!sasayaki?.isPlaying)),
   );
 
   $effect(() => {
     const active = statsActive;
     untrack(() => {
       if (active) stats.resume();
-      else stats.pause();
+      else stats.pause(idle ? lastActivity : undefined);
     });
+  });
+
+  function markActivity() {
+    lastActivity = Date.now();
+    idle = false;
+  }
+
+  const activityMessages = new Set([
+    "mouse-activity", "wheel", "selected", "press", "reader-hotkey", "scroll", "progress", "boundary",
+  ]);
+  function isActivity(m: { hoshi?: string; jump?: boolean }) {
+    return statsConfig.statisticsPauseWhenIdle && activityMessages.has(m?.hoshi ?? "") && !m.jump;
+  }
+
+  function onWindowActivity(e: Event) {
+    if (e.type !== "mousemove" || windowFocused) markActivity();
+  }
+
+  const trackMouse = $derived(statsConfig.statisticsPauseWhenIdle && windowFocused);
+
+  $effect(() => {
+    postToFrame({ hoshi: "track-mouse", enabled: trackMouse });
+  });
+
+  $effect(() => {
+    if (!statsConfig.statisticsPauseWhenIdle) return;
+    markActivity();
+    const types = ["keydown", "pointerdown", "wheel", "mousemove"];
+    for (const type of types) window.addEventListener(type, onWindowActivity, true);
+    return () => {
+      for (const type of types) window.removeEventListener(type, onWindowActivity, true);
+      idle = false;
+    };
   });
 
   $effect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(async ({ payload: focused }) => {
       windowFocused = focused;
+      if (focused) markActivity();
       await tick();
       if (focused) {
         invoke("gdrive_sync_book", { id });
@@ -1017,6 +1056,10 @@
 
   $effect(() => {
     const timer = setInterval(() => {
+      if (statsConfig.statisticsPauseWhenIdle) {
+        if (sasayaki?.isPlaying) markActivity();
+        else if (Date.now() - lastActivity > statsConfig.statisticsIdleTime * 60_000) idle = true;
+      }
       if (stats.isTracking && !stats.isPaused) stats.updateStats();
     }, 1000);
     return () => clearInterval(timer);
@@ -1324,6 +1367,7 @@
     }
     if (sourceKey === null) return;
     const m = e.data;
+    if (isActivity(m)) markActivity();
     if (m?.hoshi === "wheel") {
       frameWheelAt.set(sourceKey, performance.now());
       onWheelInput(m.dx, m.dy);
@@ -1391,6 +1435,7 @@
       case "ready": {
         if (spread) postRestyle();
         postToFrame({ hoshi: "reader-hotkeys", keys: [...frameHotkeys] });
+        postToFrame({ hoshi: "track-mouse", enabled: trackMouse });
         const cues = sasayaki?.hasMatch ? frameCues(sasayaki) : null;
         const saved = frameHighlights();
         if (pendingFragment) {

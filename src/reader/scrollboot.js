@@ -550,6 +550,9 @@
             case 'reader-hotkeys':
                 input.readerHotkeys = m.keys;
                 break;
+            case 'track-mouse':
+                input.trackMouse = m.enabled;
+                break;
             case 'turn':
                 turn(m.dir);
                 break;

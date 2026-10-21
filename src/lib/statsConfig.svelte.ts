@@ -10,6 +10,9 @@ export type StatsConfig = {
   statisticsDailyTimeGoal: number;
   statisticsDailyCharacterGoal: number;
   statisticsHideOnHome: boolean;
+  statisticsPauseInBackground: boolean;
+  statisticsPauseWhenIdle: boolean;
+  statisticsIdleTime: number;
 };
 
 const defaults: StatsConfig = {
@@ -19,6 +22,9 @@ const defaults: StatsConfig = {
   statisticsDailyTimeGoal: 20,
   statisticsDailyCharacterGoal: 5000,
   statisticsHideOnHome: false,
+  statisticsPauseInBackground: true,
+  statisticsPauseWhenIdle: false,
+  statisticsIdleTime: 5,
 };
 
 const store = persisted<StatsConfig>("stats.config", defaults);

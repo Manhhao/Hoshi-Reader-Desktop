@@ -87,17 +87,16 @@ export class StatsTracker {
     await saving;
   }
 
-  updateStats() {
+  updateStats(now = Date.now()) {
     if (this.applyingBookmark()) return;
-    const now = Date.now();
     const timeDiff = (now - this.lastTimestamp) / 1000;
     const charDiff = Math.max(this.currentCharacter() - this.lastCount, -this.currentSession.charactersRead);
-    if (timeDiff <= 0) return;
+    if (timeDiff === 0) return;
 
     this.currentSession = {
       ...this.currentSession,
       charactersRead: Math.max(this.currentSession.charactersRead + charDiff, 0),
-      readingTime: this.currentSession.readingTime + timeDiff,
+      readingTime: Math.max(this.currentSession.readingTime + timeDiff, 0),
       endedAt: now,
     };
 
@@ -110,10 +109,10 @@ export class StatsTracker {
     this.lastTimestamp = Date.now();
   }
 
-  async pause() {
-    const saving = this.flushStats();
+  async pause(activeUntil = Date.now()) {
+    if (this.isTracking && !this.isPaused) this.updateStats(activeUntil);
     this.isPaused = true;
-    await saving;
+    if (this.isTracking) await this.saveStats();
   }
 
   resume() {

@@ -88,6 +88,38 @@
   </SettingRow>
   <SettingToggle
     compact
+    label="Pause in Background"
+    bind:checked={statsConfig.statisticsPauseInBackground}
+    onchange={saveStatsConfig}
+  />
+  <SettingToggle
+    compact
+    label="Pause When Idle"
+    bind:checked={statsConfig.statisticsPauseWhenIdle}
+    onchange={saveStatsConfig}
+  />
+  {#if statsConfig.statisticsPauseWhenIdle}
+    <SettingRow compact label="Idle Time">
+      <label class="input input-sm w-32">
+        <input
+          type="number"
+          class="min-w-0 flex-1 tabular-nums"
+          min="1"
+          step="1"
+          required
+          value={statsConfig.statisticsIdleTime}
+          onchange={(e) => {
+            if (!e.currentTarget.reportValidity()) return;
+            statsConfig.statisticsIdleTime = e.currentTarget.valueAsNumber;
+            saveStatsConfig();
+          }}
+        />
+        <span class="text-base-content/60">min</span>
+      </label>
+    </SettingRow>
+  {/if}
+  <SettingToggle
+    compact
     label="Hide Stats Overview on Home"
     bind:checked={statsConfig.statisticsHideOnHome}
     onchange={saveStatsConfig}

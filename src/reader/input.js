@@ -26,12 +26,14 @@ window.hoshiInput = (function () {
         highlightRange: null,
         clickAdvance: false,
         clickZone: 0,
+        trackMouse: false,
         setupImages
     };
 
     let scanKeyHeld = false;
     let scanTimer = 0;
     let lastMouse = null;
+    let lastMouseActivity = 0;
     let mouseButtons = 0;
     let mouseDownAt = null;
     let secondaryRange = null;
@@ -130,6 +132,10 @@ window.hoshiInput = (function () {
     }
 
     function onMouseMove(e) {
+        if (input.trackMouse && e.timeStamp - lastMouseActivity > 2000) {
+            lastMouseActivity = e.timeStamp;
+            post({ hoshi: 'mouse-activity' });
+        }
         mouseButtons = e.buttons;
         lastMouse = { x: e.clientX, y: e.clientY };
         document.documentElement.classList.toggle('edge', !!clickEdge(e.clientX));
