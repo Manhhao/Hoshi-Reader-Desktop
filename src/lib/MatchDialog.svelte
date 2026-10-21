@@ -195,7 +195,7 @@
             <span class="text-sm tabular-nums">{progressLabel(progress)}</span>
             {#if progress?.state === "transcribing" && progress.remaining !== null}
               <span class="text-xs text-base-content/60">
-                about {Math.ceil(progress.remaining / 60)} min left
+                {progress.remaining < 60 ? "less than 1 min left" : `about ${Math.ceil(progress.remaining / 60)} min left`}
               </span>
             {/if}
           </div>
