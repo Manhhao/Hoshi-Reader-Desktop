@@ -117,7 +117,9 @@ fn anchors(speech: &Speech, book: &[char], chapters: &[Chapter]) -> Vec<Anchor> 
         .find(|chapter| chapter.length >= PROBE_LENGTH)
     {
         let probe = &book[chapter.start..chapter.start + PROBE_LENGTH];
-        if let Some(found) = find_text(&speech.characters, probe, 0, speech.characters.len()) {
+        if find_text(book, probe, chapter.start + 1, book.len()).is_none()
+            && let Some(found) = find_text(&speech.characters, probe, 0, speech.characters.len())
+        {
             anchors[0] = Anchor {
                 speech: found,
                 book: chapter.start,
