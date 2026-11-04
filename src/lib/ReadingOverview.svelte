@@ -94,13 +94,13 @@
 
 {#snippet cover(book: BookMetadata)}
   <span class="flex w-full flex-col gap-1">
-    <span class="relative block aspect-[0.709] w-full overflow-hidden rounded-sm border border-base-300 bg-base-200">
-      <BookCover
-        title={displayTitle(book)}
-        author={book.author}
-        src={book.cover ? schemeUrl("cover", book.id) + "?w=512" : null}
-      />
-    </span>
+    <BookCover
+      bunko
+      title={displayTitle(book)}
+      author={book.author}
+      src={book.cover ? schemeUrl("cover", book.id) + "?w=512" : null}
+      frontClass="bg-base-200"
+    />
     <span class="flex items-center gap-1">
       <progress
         class="progress h-1 flex-1 text-base-content/60"

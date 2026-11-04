@@ -466,16 +466,21 @@
       ? 'cursor-grab'
       : ''} {sort.index === index ? 'opacity-40' : ''}"
   >
-    <div
-      class="relative aspect-[0.709] w-full overflow-hidden rounded-sm border border-base-300 bg-base-200 {isSelecting && selectedIds.includes(book.id) ? 'outline-2 outline-offset-2 outline-primary' : ''}"
+    <BookCover
+      bunko
+      title={displayTitle(book)}
+      author={book.author}
+      src={book.cover ? schemeUrl("cover", book.id) + "?w=512" : null}
+      frontClass="bg-base-200 {isSelecting && selectedIds.includes(book.id) ? 'outline-2 outline-offset-2 outline-primary' : ''}"
     >
-      <BookCover title={displayTitle(book)} author={book.author} src={book.cover ? schemeUrl("cover", book.id) + "?w=512" : null} />
       {#if isSelecting && selectedIds.includes(book.id)}
         <CircleCheck class="absolute right-1.5 top-1.5 size-[22px] rounded-full bg-blue-500 text-white" />
       {:else if isSelecting}
         <span class="absolute right-1.5 top-1.5 size-[22px] rounded-full border-2 border-white/85 bg-black/25"></span>
+      {:else if book.progress >= 0.999}
+        <CircleCheck class="absolute bottom-1.5 right-1.5 size-[22px] rounded-full bg-[#999] text-white" />
       {/if}
-    </div>
+    </BookCover>
     {#if source.kind !== "home"}
       {@render status(book)}
     {/if}
@@ -528,8 +533,8 @@
   >
     <td>
       <div class="flex min-w-0 items-center gap-3">
-        <span class="relative block h-[45px] w-8 shrink-0 overflow-hidden rounded-sm bg-base-200 ring-1 ring-black/5">
-          <BookCover title={displayTitle(book)} author={book.author} src={book.cover ? schemeUrl("cover", book.id) + "?w=128" : null} />
+        <span class="block w-8 shrink-0">
+          <BookCover bunko title={displayTitle(book)} author={book.author} src={book.cover ? schemeUrl("cover", book.id) + "?w=128" : null} frontClass="bg-base-200" />
         </span>
         <div class="flex min-w-0 flex-col">
           <span class="truncate">
@@ -736,8 +741,8 @@
       {#if completionBooks.length === 1}
         {@const book = completionBooks[0]}
         <div class="flex min-w-0 items-center gap-3">
-          <span class="relative block h-[68px] w-12 shrink-0 overflow-hidden rounded-sm bg-base-200 ring-1 ring-black/5">
-            <BookCover title={displayTitle(book)} author={book.author} src={book.cover ? schemeUrl("cover", book.id) + "?w=128" : null} />
+          <span class="block w-12 shrink-0">
+            <BookCover bunko title={displayTitle(book)} author={book.author} src={book.cover ? schemeUrl("cover", book.id) + "?w=128" : null} frontClass="bg-base-200" />
           </span>
           <div class="flex min-w-0 flex-col">
             <span class="line-clamp-2 text-sm">{displayTitle(book)}</span>
