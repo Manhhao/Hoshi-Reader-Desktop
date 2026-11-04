@@ -2,17 +2,20 @@
   import { invoke } from "@tauri-apps/api/core";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { Trash2 } from "@lucide/svelte";
-  import { formatNumber, formatUnits } from "./statsModel.svelte";
+  import { formatNumber, formatUnits, keyToDate } from "./statsModel.svelte";
+  import { statsConfig } from "./statsConfig.svelte";
+  import { statisticsDay } from "./statsTracker.svelte";
   import type { ReadingSession, Sessions } from "./types";
 
   type SessionEntry = { id: string; session: ReadingSession };
+  type SessionDay = { key: string; entries: SessionEntry[] };
 
   let { onChanged }: { onChanged: () => void } = $props();
 
   let dialog = $state<HTMLDialogElement>();
   let folder = $state("");
   let bookTitle = $state("");
-  let sessionEntries = $state<SessionEntry[]>([]);
+  let sessionDays = $state<SessionDay[]>([]);
   let editing = $state<SessionEntry | null>(null);
   let characters = $state(0);
   let hours = $state(0);
@@ -22,6 +25,17 @@
     day: "numeric",
     month: "short",
     year: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+  });
+
+  const dayMonthYear = new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  const time = new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "numeric",
   });
@@ -43,14 +57,23 @@
 
   async function loadSessions() {
     const sessions = await invoke<Sessions>("load_statistics", { folder });
-    sessionEntries = Object.entries(sessions)
+    const entries = Object.entries(sessions)
       .filter(([, change]) => change.value !== null)
       .map(([id, change]) => ({ id, session: change.value! }))
       .sort((first, second) =>
         first.session.startedAt === second.session.startedAt
-          ? first.id < second.id ? -1 : 1
-          : first.session.startedAt - second.session.startedAt,
+          ? first.id > second.id ? -1 : 1
+          : second.session.startedAt - first.session.startedAt,
       );
+    const resetTime = Math.round(statsConfig.statisticsResetTime * 60);
+    const days = new Map<string, SessionEntry[]>();
+    for (const entry of entries) {
+      const key = statisticsDay(entry.session.startedAt, resetTime);
+      days.set(key, [...(days.get(key) ?? []), entry]);
+    }
+    sessionDays = [...days]
+      .map(([key, entries]) => ({ key, entries }))
+      .sort((first, second) => (first.key > second.key ? -1 : 1));
   }
 
   function edit(entry: SessionEntry) {
@@ -101,7 +124,7 @@
       title: "Delete All Statistics?",
       kind: "warning",
     }))) return;
-    await deleteSessions(sessionEntries.map((entry) => entry.id));
+    await deleteSessions(sessionDays.flatMap((day) => day.entries).map((entry) => entry.id));
     dialog?.close();
   }
 </script>
@@ -155,38 +178,44 @@
         </div>
       </div>
     {:else}
-      <div class="flex min-h-0 flex-col gap-2">
-        <h4 class="text-xs font-medium tracking-wide text-base-content/60 uppercase">Sessions</h4>
-        {#if sessionEntries.length === 0}
-          <div
-            class="flex h-12 items-center justify-center rounded-box border border-base-300 text-sm text-base-content/60"
-          >
-            No Statistics
-          </div>
-        {:else}
-          <ul class="list min-h-0 overflow-y-auto rounded-box border border-base-300">
-            {#each sessionEntries as entry (entry.id)}
-              <li class="list-row items-center has-[button.list-col-grow:hover]:bg-base-200">
-                <button class="list-col-grow text-left after:absolute after:inset-0" onclick={() => edit(entry)}>
-                  <div class="text-sm">{dayMonthYearTime.format(new Date(entry.session.startedAt))}</div>
-                  <div class="text-xs text-base-content/60 tabular-nums">
-                    {formatNumber(entry.session.charactersRead)}
-                  </div>
-                </button>
-                <span class="text-sm text-base-content/60 tabular-nums">
-                  {formatUnits(entry.session.readingTime)}
-                </span>
-                <button
-                  class="btn btn-ghost btn-xs btn-square relative text-base-content/50"
-                  onclick={() => deleteSession(entry)}
-                >
-                  <Trash2 class="size-4" />
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </div>
+      {#if sessionDays.length === 0}
+        <div
+          class="flex h-12 items-center justify-center rounded-box border border-base-300 text-sm text-base-content/60"
+        >
+          No Statistics
+        </div>
+      {:else}
+        <div class="flex min-h-0 flex-col gap-4 overflow-y-auto">
+          {#each sessionDays as day (day.key)}
+            <div class="flex flex-col gap-2">
+              <h4 class="text-xs font-medium tracking-wide text-base-content/60 uppercase">
+                {dayMonthYear.format(keyToDate(day.key))}
+              </h4>
+              <ul class="list rounded-box border border-base-300">
+                {#each day.entries as entry (entry.id)}
+                  <li class="list-row items-center has-[button.list-col-grow:hover]:bg-base-200">
+                    <button class="list-col-grow text-left after:absolute after:inset-0" onclick={() => edit(entry)}>
+                      <div class="text-sm">{time.format(new Date(entry.session.startedAt))}</div>
+                      <div class="text-xs text-base-content/60 tabular-nums">
+                        {formatNumber(entry.session.charactersRead)}
+                      </div>
+                    </button>
+                    <span class="text-sm text-base-content/60 tabular-nums">
+                      {formatUnits(entry.session.readingTime)}
+                    </span>
+                    <button
+                      class="btn btn-ghost btn-xs btn-square relative text-base-content/50"
+                      onclick={() => deleteSession(entry)}
+                    >
+                      <Trash2 class="size-4" />
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <div class="modal-action mt-0 justify-between">
         <button class="btn btn-error btn-sm" onclick={deleteAll}>Delete All Statistics</button>
