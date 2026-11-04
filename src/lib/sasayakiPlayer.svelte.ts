@@ -334,7 +334,13 @@ export class SasayakiPlayer {
 
   handleRestoreCompleted(currentIndex: number) {
     if (!this.hasAudio) this.restoreAudio();
-    if (!this.hasMatch || !this.chapterTransition) return;
+    if (!this.hasMatch) return;
+    if (!this.chapterTransition) {
+      if (this.currentCue && this.currentCue.chapterIndex === currentIndex) {
+        this.bridge.highlightCue(this.currentCue.id, false);
+      }
+      return;
+    }
 
     if (this.pendingImage && this.pendingImage.chapterIndex === currentIndex) {
       const image = this.pendingImage;
