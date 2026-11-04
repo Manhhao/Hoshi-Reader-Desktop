@@ -6,15 +6,24 @@
   import SettingRow from "./SettingRow.svelte";
   import SettingToggle from "./SettingToggle.svelte";
   import SettingStepper from "./SettingStepper.svelte";
+  import SettingSlider from "./SettingSlider.svelte";
 
   let { compact = false }: { compact?: boolean } = $props();
 
   let showColors = $state(false);
 
   const themes = [
-    ["Light Theme", "sasayakiTextColor", "sasayakiBackgroundColor"],
-    ["Dark Theme", "sasayakiDarkTextColor", "sasayakiDarkBackgroundColor"],
+    ["Light Theme", "sasayakiTextColor", "sasayakiBackgroundColor", "sasayakiUnderlineColor"],
+    ["Dark Theme", "sasayakiDarkTextColor", "sasayakiDarkBackgroundColor", "sasayakiDarkUnderlineColor"],
   ] as const;
+
+  type Theme = (typeof themes)[number];
+
+  const underline = $derived(sasayakiConfig.sasayakiHighlightStyle === "Underline");
+
+  function colorRows([, text, background, line]: Theme): [string, Theme[1 | 2 | 3]][] {
+    return [["Text Color", text], underline ? ["Underline Color", line] : ["Background Color", background]];
+  }
 </script>
 
 {#snippet settings()}
@@ -73,8 +82,38 @@
   />
 {/snippet}
 
-{#snippet colors(text: (typeof themes)[number][1], background: (typeof themes)[number][2])}
-  {#each [["Text Color", text], ["Background Color", background]] as const as [label, key] (key)}
+{#snippet highlightStyle()}
+  <SettingRow label="Highlight Style" {compact}>
+    <div class="join">
+      {#each ["Background", "Underline"] as const as style (style)}
+        <button
+          class="btn join-item btn-sm {sasayakiConfig.sasayakiHighlightStyle === style ? 'btn-active' : ''}"
+          onclick={() => {
+            sasayakiConfig.sasayakiHighlightStyle = style;
+            saveSasayakiConfig();
+          }}
+        >
+          {style}
+        </button>
+      {/each}
+    </div>
+  </SettingRow>
+  {#if underline}
+    <SettingSlider
+      label="Thickness"
+      {compact}
+      bind:value={sasayakiConfig.sasayakiUnderlineThickness}
+      display={`${sasayakiConfig.sasayakiUnderlineThickness}px`}
+      min={0.5}
+      max={2.5}
+      step={0.25}
+      onchange={saveSasayakiConfig}
+    />
+  {/if}
+{/snippet}
+
+{#snippet colors(theme: Theme)}
+  {#each colorRows(theme) as [label, key] (key)}
     <SettingRow {label} {compact}>
       <div class="flex items-center gap-2">
         <input
@@ -116,9 +155,12 @@
     <button class="flex items-center justify-between gap-2 text-left text-sm" onclick={() => (showColors = !showColors)}>
       Highlight
       <span class="flex items-center gap-2 text-xs text-base-content/60">
-        {#each themes as [title, , background] (title)}
+        {#each themes as [title, , background, line] (title)}
           {title.split(" ")[0]}
-          <span class="size-4 rounded-full ring-1 ring-base-content/30" style:background-color={sasayakiConfig[background]}></span>
+          <span
+            class="size-4 rounded-full ring-1 ring-base-content/30"
+            style:background-color={sasayakiConfig[underline ? line : background]}
+          ></span>
         {/each}
         {#if showColors}
           <ChevronDown class="size-4" />
@@ -128,9 +170,10 @@
       </span>
     </button>
     {#if showColors}
-      {#each themes as [title, text, background] (title)}
-        <span class="text-xs font-medium text-base-content/60">{title}</span>
-        {@render colors(text, background)}
+      {@render highlightStyle()}
+      {#each themes as theme (theme[0])}
+        <span class="text-xs font-medium text-base-content/60">{theme[0]}</span>
+        {@render colors(theme)}
       {/each}
     {/if}
   </SettingGroup>
@@ -146,7 +189,8 @@
       </select>
     </SettingRow>
   </SettingsSection>
-  {#each themes as [title, text, background] (title)}
-    <SettingsSection {title}>{@render colors(text, background)}</SettingsSection>
+  <SettingsSection title="Highlight">{@render highlightStyle()}</SettingsSection>
+  {#each themes as theme (theme[0])}
+    <SettingsSection title={theme[0]}>{@render colors(theme)}</SettingsSection>
   {/each}
 {/if}

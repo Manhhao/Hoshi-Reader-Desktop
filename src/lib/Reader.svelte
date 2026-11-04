@@ -118,9 +118,18 @@
       : sasayakiConfig.sasayakiTextColor,
   );
   const sasayakiBackgroundColor = $derived(
-    resolvedScheme() === "dark"
-      ? sasayakiConfig.sasayakiDarkBackgroundColor
-      : sasayakiConfig.sasayakiBackgroundColor,
+    sasayakiConfig.sasayakiHighlightStyle !== "Background"
+      ? "#00000000"
+      : resolvedScheme() === "dark"
+        ? sasayakiConfig.sasayakiDarkBackgroundColor
+        : sasayakiConfig.sasayakiBackgroundColor,
+  );
+  const sasayakiUnderlineColor = $derived(
+    sasayakiConfig.sasayakiHighlightStyle !== "Underline"
+      ? "#00000000"
+      : resolvedScheme() === "dark"
+        ? sasayakiConfig.sasayakiDarkUnderlineColor
+        : sasayakiConfig.sasayakiUnderlineColor,
   );
 
   let index = $state((() => bookmark?.chapterIndex ?? 0)());
@@ -222,7 +231,8 @@
         `&mod=${encodeURIComponent(hotkeyConfig.scanModifier)}&cl=${hotkeyConfig.clickLookup}` +
         `&sdl=${hotkeyConfig.scanDelay}&cz=${hotkeyConfig.pageClickZone}` +
         `&tc=${readerText ? readerText.slice(1) : ""}` +
-        `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}`,
+        `&stc=${encodeURIComponent(sasayakiTextColor)}&sbc=${encodeURIComponent(sasayakiBackgroundColor)}` +
+        `&suc=${encodeURIComponent(sasayakiUnderlineColor)}&sut=${sasayakiConfig.sasayakiUnderlineThickness}`,
     );
   }
 
@@ -1655,6 +1665,8 @@
       hoshi: "sasayaki-colors",
       text: sasayakiTextColor,
       background: sasayakiBackgroundColor,
+      underline: sasayakiUnderlineColor,
+      thickness: sasayakiConfig.sasayakiUnderlineThickness,
     });
   });
 

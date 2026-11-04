@@ -13,6 +13,10 @@ export type SasayakiConfig = {
   sasayakiBackgroundColor: string;
   sasayakiDarkTextColor: string;
   sasayakiDarkBackgroundColor: string;
+  sasayakiHighlightStyle: "Background" | "Underline";
+  sasayakiUnderlineThickness: number;
+  sasayakiUnderlineColor: string;
+  sasayakiDarkUnderlineColor: string;
   sasayakiAudioFormat: "mp3" | "opus";
   sasayakiTranscriptionPerformance: number;
 };
@@ -30,6 +34,10 @@ const defaults: SasayakiConfig = {
   sasayakiBackgroundColor: "#87cefa66",
   sasayakiDarkTextColor: "#ffffffff",
   sasayakiDarkBackgroundColor: "#87cefa66",
+  sasayakiHighlightStyle: "Background",
+  sasayakiUnderlineThickness: 1.25,
+  sasayakiUnderlineColor: "#000000ff",
+  sasayakiDarkUnderlineColor: "#ffffffff",
   sasayakiAudioFormat: "mp3",
   sasayakiTranscriptionPerformance: 1,
 };

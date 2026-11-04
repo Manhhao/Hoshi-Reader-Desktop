@@ -36,6 +36,20 @@
       sasayakiBackgroundColor,
     );
   }
+  const sasayakiUnderlineColor = params.get("suc");
+  if (sasayakiUnderlineColor) {
+    document.documentElement.style.setProperty(
+      "--hoshi-sasayaki-underline-color",
+      sasayakiUnderlineColor,
+    );
+  }
+  const sasayakiUnderlineThickness = params.get("sut");
+  if (sasayakiUnderlineThickness) {
+    document.documentElement.style.setProperty(
+      "--hoshi-sasayaki-underline-thickness",
+      `${sasayakiUnderlineThickness}px`,
+    );
+  }
   const textColor = params.get("tc");
   if (textColor) {
     document.documentElement.style.setProperty("--hoshi-text-color", "#" + textColor);
@@ -198,6 +212,8 @@
       .hoshi-sasayaki-cue.hoshi-sasayaki-active {
         color: var(--hoshi-sasayaki-text-color) !important;
         background-color: var(--hoshi-sasayaki-background-color) !important;
+        text-decoration: underline var(--hoshi-sasayaki-underline-color) var(--hoshi-sasayaki-underline-thickness) !important;
+        text-underline-position: under right !important;
       }
       ${
         paragraphMode
@@ -623,6 +639,14 @@
         document.documentElement.style.setProperty(
           "--hoshi-sasayaki-background-color",
           m.background,
+        );
+        document.documentElement.style.setProperty(
+          "--hoshi-sasayaki-underline-color",
+          m.underline,
+        );
+        document.documentElement.style.setProperty(
+          "--hoshi-sasayaki-underline-thickness",
+          `${m.thickness}px`,
         );
         break;
       case "sasayaki-highlight": {
