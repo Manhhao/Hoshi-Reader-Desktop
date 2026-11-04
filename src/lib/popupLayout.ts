@@ -35,7 +35,7 @@ export function calculatePopupLayout(
     : Math.min(screenSize.width - screenBorderPadding * 2, maxWidth);
 
   const height = isVertical
-    ? maxHeight
+    ? Math.min(screenSize.height - topInset - bottomInset - screenBorderPadding * 2, maxHeight)
     : Math.min(Math.max(spaceAbove, spaceBelow) - screenBorderPadding, maxHeight);
 
   const showBelow = spaceBelow >= height;
