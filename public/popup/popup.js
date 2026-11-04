@@ -1979,6 +1979,7 @@ window.renderPopup = function() {
     }
 
     (async () => {
+        let frameStart = performance.now();
         for (let idx = 0; idx < window.entryCount; idx++) {
             if (generation !== renderGeneration) {
                 return;
@@ -2037,19 +2038,16 @@ window.renderPopup = function() {
             glossarySections.classList.toggle('single-section', dictNames.length === 1);
             for (let dictIdx = 0; dictIdx < dictNames.length; dictIdx++) {
                 glossarySections.appendChild(createGlossarySection(dictNames[dictIdx], grouped[dictNames[dictIdx]], dictIdx === 0, idx));
-                if (idx === 0) {
+                if (performance.now() - frameStart > 8) {
                     scheduleMasonry();
                     await new Promise(r => requestAnimationFrame(r));
                     if (generation !== renderGeneration) {
                         return;
                     }
+                    frameStart = performance.now();
                 }
             }
             observeMasonry(glossarySections);
-            
-            if (idx > 0) {
-                await new Promise(r => requestAnimationFrame(r));
-            }
         }
 
         container.querySelectorAll('.glossary-content ruby').forEach(ruby => {
