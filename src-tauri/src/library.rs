@@ -249,22 +249,28 @@ pub fn mark_book_read(app: AppHandle, id: String) {
     let Some(dir) = book_dir(&app, &id) else {
         return;
     };
-    let Some(info) = read_json::<BookInfo>(&dir.join(BOOKINFO_FILE)) else {
+    let metadata = load_metadata_at(&dir).unwrap();
+    let info = read_json::<BookInfo>(&dir.join(BOOKINFO_FILE));
+    let Some(character_count) = info
+        .as_ref()
+        .map(|info| info.character_count)
+        .or(metadata.character_count.map(|count| count as usize))
+    else {
         return;
     };
     let bookmark = Bookmark {
         chapter_index: info
-            .chapter_info
-            .values()
+            .iter()
+            .flat_map(|info| info.chapter_info.values())
             .filter_map(|chapter| chapter.spine_index)
             .max()
             .unwrap_or(0),
         progress: 1.0,
-        character_count: info.character_count,
+        character_count,
         last_modified: Some(now_apple()),
     };
     write_json(&dir.join(BOOKMARK_FILE), &bookmark).ok();
-    let folder = load_metadata_at(&dir).unwrap().folder;
+    let folder = metadata.folder;
     crate::sync::storage::shared()
         .handle_book_change(&folder)
         .ok();

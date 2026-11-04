@@ -289,7 +289,7 @@
       return (bookmark !== null && (bookmark.chapterIndex > 0 || bookmark.progress > 0 || bookmark.characterCount > 0)) ||
         Object.values(sessions).some((session) => session.value !== null);
     }));
-    const read = books.filter((book) => book.hasBookInfo && book.progress < 1);
+    const read = books.filter((book) => (book.hasBookInfo || (book.characterCount ?? 0) > 0) && book.progress < 1);
     const unread = books.filter((_, index) => canMarkUnread[index]);
     return [
       { id: "mark-read", text: "Read", enabled: read.length > 0, action: () => markRead(read) },
