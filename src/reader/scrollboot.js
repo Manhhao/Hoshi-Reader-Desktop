@@ -204,10 +204,13 @@
                 filter: blur(24px) !important;
                 clip-path: inset(0);
                 transform: translateZ(0);
+            }
+            img.block-img.blurred,
+            svg.blurred image {
                 cursor: pointer;
             }
             img.block-img:not(.blurred),
-            svg:has(image):not(.blurred) {
+            svg:not(.blurred) image {
                 cursor: zoom-in;
             }
             ${dimmedFuriganaCss}

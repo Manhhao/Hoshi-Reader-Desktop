@@ -47,6 +47,13 @@ export type BookInfo = {
   characterCount: number;
   chapterInfo: Record<string, ChapterInfo>;
   images?: string[] | null;
+  imagePages?: Record<string, ImagePage> | null;
+};
+
+export type ImagePage = {
+  wide: boolean;
+  blank: boolean;
+  path: string;
 };
 
 export type Bookmark = {

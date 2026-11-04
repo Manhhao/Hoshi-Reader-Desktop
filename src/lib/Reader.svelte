@@ -69,6 +69,7 @@
     Bookmark,
     BookSearchResult,
     FontInfo,
+    ImagePage,
     KanjiResponse,
     LookupEntry,
     LookupResponse,
@@ -184,8 +185,57 @@
   const spreadGap = 48;
   const spreadMode = $derived(readerConfig.spreadLayout && !readerConfig.paragraphMode && !continuous && frameWidth > frameHeight);
 
+  const imagePages = $derived(
+    new Map(Object.entries(bookInfo.imagePages ?? {}).map(([spineIndex, page]) => [Number(spineIndex), page])),
+  );
+  const secondSides = $derived(secondSidePages(imagePages, spine.length));
+  const pairedSpines = $derived(
+    new Set(
+      [...secondSides].filter(
+        (spineIndex) => spineIndex > 0 && imagePages.get(spineIndex - 1)?.wide === false && !secondSides.has(spineIndex - 1),
+      ),
+    ),
+  );
+
+  function spreadSides(pages: Map<number, ImagePage>, count: number, insideCover: boolean) {
+    const second = new Set<number>();
+    let emptySides = 0;
+    let isSecond = true;
+    for (let spineIndex = 0; spineIndex < count; spineIndex++) {
+      const page = pages.get(spineIndex);
+      if (!page) break;
+      if (spineIndex === 1 && insideCover) isSecond = false;
+      if (page.wide && isSecond && spineIndex > 0) emptySides += 1;
+      if (!page.wide && isSecond) second.add(spineIndex);
+      isSecond = spineIndex === 0 || (!page.wide && !isSecond);
+    }
+    return { second, emptySides };
+  }
+
+  function secondSidePages(pages: Map<number, ImagePage>, count: number) {
+    const pageOne = spreadSides(pages, count, false);
+    const insideCover = spreadSides(pages, count, true);
+    return pages.get(1)?.blank || insideCover.emptySides < pageOne.emptySides ? insideCover.second : pageOne.second;
+  }
+
+  function spineAfter(spineIndex: number) {
+    return spineIndex + (spreadMode && pairedSpines.has(spineIndex + 1) ? 2 : 1);
+  }
+
+  function spineBefore(spineIndex: number) {
+    return spineIndex - (spreadMode && pairedSpines.has(spineIndex - 1) ? 2 : 1);
+  }
+
+  function imageQuery(spineIndex: number) {
+    const pair = pairedSpines.has(spineIndex + 1) ? imagePages.get(spineIndex + 1)?.path : null;
+    return (
+      `&is2=${secondSides.has(spineIndex) ? 1 : 0}` +
+      (pair ? `&pair=${encodeURIComponent(schemeUrl("book", `${id}/${encodeURI(pair)}`))}` : "")
+    );
+  }
+
   function spreadAt(spineIndex: number) {
-    return spreadMode && bookInfo.chapterInfo[spine[spineIndex]]?.chapterCount !== 0;
+    return spreadMode && (bookInfo.chapterInfo[spine[spineIndex]]?.chapterCount !== 0 || imagePages.has(spineIndex));
   }
 
   function effectivePadding(padding: number, max: number, size: number) {
@@ -224,7 +274,7 @@
     const href = continuous ? "__continuous.html" : encodeURI(spine[index]);
     return schemeUrl(
       "book",
-      `${id}/${href}?${layoutQuery(spread)}` +
+      `${id}/${href}?${layoutQuery(spread)}${continuous ? "" : imageQuery(index)}` +
         `&dw=${hotkeyConfig.disableReaderWheel ? 1 : 0}` +
         `&ta=${readerConfig.textAnimation ? 1 : 0}&ts=${readerConfig.textSpeed}&ca=${readerConfig.clickToAdvance ? 1 : 0}` +
         `&sl=${dictConfig.scanLength}&snj=${dictConfig.scanNonJapaneseText ? 1 : 0}` +
@@ -365,7 +415,7 @@
   const showPages = $derived(!continuous && readerConfig.progressCount === "Pages");
   const topProgress = $derived(spreadMode && readerConfig.spreadTopProgress);
   const measuresPages = $derived(showPages || (topProgress && readerConfig.progressCount === "Characters"));
-  const layout = $derived(`${layoutQuery(spreadMode)}&w=${frameWidth}&h=${frameHeight}`);
+  const layout = $derived(`${layoutQuery(spreadMode)}&w=${frameWidth}&h=${frameHeight}&ip=2`);
 
   function updatePages(starts: number[][]) {
     const all: number[] = [];
@@ -380,10 +430,15 @@
   }
 
   function measureSpine() {
-    pagesSpread = spreadAt(measuredStarts.length);
+    const spineIndex = measuredStarts.length;
+    if (spreadMode && pairedSpines.has(spineIndex)) {
+      onSpineMeasured([]);
+      return;
+    }
+    pagesSpread = spreadAt(spineIndex);
     pagesSrc = schemeUrl(
       "book",
-      `${id}/${encodeURI(spine[measuredStarts.length])}?${layoutQuery(pagesSpread)}&pages=${++pagesRun}`,
+      `${id}/${encodeURI(spine[spineIndex])}?${layoutQuery(pagesSpread)}${imageQuery(spineIndex)}&pages=${++pagesRun}`,
     );
   }
 
@@ -1515,17 +1570,17 @@
         break;
       case "boundary":
         clearForwardHistory();
-        if (m.dir === "forward" && index < spine.length - 1) {
+        if (m.dir === "forward" && spineAfter(index) < spine.length) {
           pendingPagePlayback = true;
           progress = 0;
-          index += 1;
+          index = spineAfter(index);
           saveBookmark();
           pushFrame();
           stats.flushStats();
-        } else if (m.dir === "backward" && index > 0) {
+        } else if (m.dir === "backward" && spineBefore(index) >= 0) {
           pendingPagePlayback = false;
           progress = 1;
-          index -= 1;
+          index = spineBefore(index);
           saveBookmark();
           pushFrame();
           stats.flushStats();

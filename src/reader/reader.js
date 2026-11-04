@@ -19,6 +19,10 @@ window.hoshiReader = {
     isVertical() {
         return window.getComputedStyle(document.body).writingMode === "vertical-rl";
     },
+
+    pageOffset(rect, vertical) {
+        return vertical ? this.pageWidth - rect.right : rect.left;
+    },
     
     isFurigana(node) {
         const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;

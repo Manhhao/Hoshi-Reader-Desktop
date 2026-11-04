@@ -21,6 +21,10 @@
   const maxSentencesPerPage = Number(params.get("spp"));
   const splitDialogue = params.get("sd") === "1";
   const pagesRun = params.get("pages");
+  const imageSecond = params.get("is2") === "1";
+  const pairSrc = params.get("pair");
+  let imagePage = false;
+  let pairImage = null;
   let textSpeed = params.get("ta") === "1" ? Number(params.get("ts")) : 0;
   input.clickAdvance = paragraphMode && params.get("ca") === "1";
   const fontName = params.get("font");
@@ -85,6 +89,7 @@
     const side = spread ? `${spreadGap / 2}px` : `${paddingX / 2}vw`;
     const pageWidth = spread ? `calc(50vw - ${spreadGap}px)` : `${100 - paddingX}vw`;
     const imgWidth = `calc(${pageWidth} - 1px)`;
+    const half = `calc(50vw + ${side})`;
     const imgHeight = vertical
       ? `calc(${100 - paddingY}vh - ${(overlap * (100 - paddingY)) / 100}px)`
       : `${100 - paddingY}vh`;
@@ -135,6 +140,42 @@
             : `p { margin-top: ${paraSpacing}em !important; margin-bottom: ${paraSpacing}em !important; }`
           : ""
       }
+      html.hoshi-image-page body {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      ${spread ? imageSideCss(vertical ? half : side, vertical ? side : half) : ""}
+      html.hoshi-image-page.hoshi-image-wide body {
+        padding-left: ${side} !important;
+        padding-right: ${side} !important;
+      }
+      html.hoshi-image-wide img.block-img,
+      html.hoshi-image-wide svg {
+        max-width: calc(100vw - ${gap}) !important;
+      }
+      html.hoshi-image-pair body {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        column-gap: ${gap};
+        align-items: center;
+        justify-items: center;
+        writing-mode: horizontal-tb !important;
+        direction: ${vertical ? "rtl" : "ltr"};
+        padding-left: ${side} !important;
+        padding-right: ${side} !important;
+      }
+      .hoshi-image-column {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: ${imgWidth} !important;
+        height: ${imgHeight} !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        text-indent: 0 !important;
+        break-inside: avoid !important;
+      }
       .blur-wrapper {
         display: table;
         margin: auto;
@@ -145,10 +186,13 @@
       svg.blurred {
         filter: blur(24px) !important;
         clip-path: inset(0);
+      }
+      img.block-img.blurred,
+      svg.blurred image {
         cursor: pointer;
       }
       img.block-img:not(.blurred),
-      svg:has(image):not(.blurred) {
+      svg:not(.blurred) image {
         cursor: zoom-in;
       }
       ${furiganaMode === "Dimmed" ? "ruby > rt, ruby > rp { opacity: 0.4 !important; }" : ""}
@@ -233,7 +277,8 @@
     spacers = [];
     r.spacer = null;
     r.pagesPerScreen = pages;
-    if (chromium && !spread) {
+    updatePair(spread);
+    if (imagePage || (chromium && !spread)) {
       return;
     }
     for (let i = 0; i < pages; i++) {
@@ -245,6 +290,76 @@
       spacers.push(spacer);
     }
     r.spacer = spacers[0];
+  }
+
+  function imageSideCss(firstLeft, firstRight) {
+    return `html.hoshi-image-page body {
+        padding-left: ${firstLeft} !important;
+        padding-right: ${firstRight} !important;
+      }
+      html.hoshi-image-page.hoshi-image-second body {
+        padding-left: ${firstRight} !important;
+        padding-right: ${firstLeft} !important;
+      }`;
+  }
+
+  function setupImagePage() {
+    const images = document.querySelectorAll("img.block-img, svg image");
+    if (images.length !== 1 || document.body.innerText.trim()) return;
+    const image = images[0];
+    const size = image.getBBox?.() ?? { width: image.naturalWidth, height: image.naturalHeight };
+    document.body.replaceChildren(image.ownerSVGElement || image.closest(".blur-wrapper") || image);
+    imagePage = true;
+    const root = document.documentElement;
+    root.classList.add("hoshi-image-page");
+    root.classList.toggle("hoshi-image-wide", size.width > size.height);
+    root.classList.toggle("hoshi-image-second", imageSecond);
+    applyStyle();
+  }
+
+  function updatePair(spread) {
+    const paired = imagePage && spread && !!pairSrc;
+    document.documentElement.classList.toggle("hoshi-image-pair", paired);
+    if (paired && !pairImage) {
+      pairImage = document.createElement("img");
+      pairImage.src = pairSrc;
+      pairImage.className = "block-img";
+      document.body.append(pairImage);
+      input.setupImage(pairImage, pairImage.src, true);
+    } else if (!paired && pairImage) {
+      (pairImage.closest(".blur-wrapper") || pairImage).remove();
+      pairImage = null;
+    }
+  }
+
+  function imagePageStarts() {
+    if (!imagePage) return null;
+    const root = document.documentElement.classList;
+    const both = r.pagesPerScreen > 1 && (root.contains("hoshi-image-pair") || root.contains("hoshi-image-wide"));
+    return both ? [0, 0] : [0];
+  }
+
+  function markColumnImages() {
+    const pageOf = (rect) => Math.floor(r.pageOffset(rect, vertical) / (r.pageWidth / r.pagesPerScreen));
+    const textPage = (block, forward) => {
+      const walker = r.createWalker();
+      walker.currentNode = block;
+      const range = document.createRange();
+      let node;
+      while ((node = forward ? walker.nextNode() : walker.previousNode())) {
+        range.selectNodeContents(node);
+        const rects = [...range.getClientRects()].filter((rect) => rect.width && rect.height);
+        if (rects.length) return pageOf(forward ? rects[0] : rects[rects.length - 1]);
+      }
+    };
+    document.querySelectorAll("img.block-img").forEach((image) => {
+      const block = (image.closest(".blur-wrapper") || image).parentElement;
+      if (block === document.body || block.children.length !== 1 || block.innerText.trim()) return;
+      const page = pageOf(image.getBoundingClientRect());
+      if (textPage(block, false) !== page && textPage(block, true) !== page) {
+        block.classList.add("hoshi-image-column");
+      }
+    });
   }
 
   function syncPageSize() {
@@ -680,8 +795,13 @@
   });
 
   input.setupImages()
+    .then(setupImagePage)
     .then(whenSized)
-    .then(() => paragraphMode && r.awaitFonts().then(() => {
+    .then(() => r.awaitFonts().then(() => {
+      if (!paragraphMode) {
+        markColumnImages();
+        return;
+      }
       if (maxSentencesPerPage > 0) window.hoshiParagraph.splitSentences(maxSentencesPerPage, splitDialogue);
       layoutParagraphs();
     }))
@@ -692,7 +812,7 @@
       }
       r.awaitFonts().then(() => {
         r.buildNodeOffsets();
-        parent.postMessage({ hoshi: "pages", run: pagesRun, starts: r.calculatePageStarts() }, "*");
+        parent.postMessage({ hoshi: "pages", run: pagesRun, starts: imagePageStarts() ?? r.calculatePageStarts() }, "*");
       });
     });
 })();

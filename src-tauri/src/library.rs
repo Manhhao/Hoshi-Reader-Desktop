@@ -105,6 +105,16 @@ pub struct BookInfo {
     pub chapter_info: HashMap<String, ChapterInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_pages: Option<HashMap<String, ImagePage>>,
+}
+
+/// A chapter with no text and a single image, keyed by spine index in `BookInfo::image_pages`.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ImagePage {
+    pub wide: bool,
+    pub blank: bool,
+    pub path: String,
 }
 
 impl BookInfo {
@@ -721,6 +731,7 @@ pub(crate) fn process_book(epub: &Epub) -> BookInfo {
         .filter_map(|entry| entry.resource().key().value().map(normalize_resource_key))
         .collect();
     let mut images = Vec::new();
+    let mut image_pages = HashMap::new();
     let mut seen_images: HashSet<String> = HashSet::new();
     for (index, entry) in epub.spine().iter().enumerate() {
         let Some(item) = spine_item(&entry) else {
@@ -736,7 +747,14 @@ pub(crate) fn process_book(epub: &Epub) -> BookInfo {
             continue;
         };
         let count = count_chars(&content);
-        for image in image_paths(&content, &href, &manifest_keys) {
+        let chapter_images = image_paths(&content, &href, &manifest_keys);
+        if count == 0
+            && let [image] = chapter_images.as_slice()
+            && let Some(page) = image_page(epub, image)
+        {
+            image_pages.insert(index.to_string(), page);
+        }
+        for image in chapter_images {
             if seen_images.insert(image.clone()) {
                 images.push(image);
             }
@@ -756,7 +774,42 @@ pub(crate) fn process_book(epub: &Epub) -> BookInfo {
         info.character_count += count;
     }
     info.images = Some(images);
+    info.image_pages = Some(image_pages);
     info
+}
+
+/// Images larger than 256 px. `blank` flags a near-uniform image (e.g. a blank page) from a 16×16
+/// grayscale thumbnail drawn over white.
+fn image_page(epub: &Epub, path: &str) -> Option<ImagePage> {
+    let entry = epub.manifest().iter().find(|entry| {
+        entry
+            .resource()
+            .key()
+            .value()
+            .map(normalize_resource_key)
+            .as_deref()
+            == Some(path)
+    })?;
+    let image = image::load_from_memory(&entry.read_bytes().ok()?).ok()?;
+    let (width, height) = (image.width(), image.height());
+    if width.max(height) <= 256 {
+        return None;
+    }
+    let thumbnail = image
+        .resize_exact(16, 16, image::imageops::FilterType::Triangle)
+        .to_luma_alpha8();
+    let pixels = thumbnail.pixels().map(|pixel| {
+        let [luma, alpha] = pixel.0.map(u32::from);
+        (luma * alpha + 255 * (255 - alpha)) / 255
+    });
+    let (min, max) = pixels.fold((255, 0), |(min, max), value| {
+        (min.min(value), max.max(value))
+    });
+    Some(ImagePage {
+        wide: width > height,
+        blank: max - min < 24,
+        path: path.to_string(),
+    })
 }
 
 const XHTML: &str = "application/xhtml+xml";

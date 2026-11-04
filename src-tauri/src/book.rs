@@ -72,6 +72,7 @@ pub fn open_book(
         library::process_book_info(&epub, &root).ok();
     } else if info.is_some_and(|info| {
         info.images.is_none()
+            || info.image_pages.is_none()
             || !document
                 .spine
                 .iter()

@@ -27,7 +27,8 @@ window.hoshiInput = (function () {
         clickAdvance: false,
         clickZone: 0,
         trackMouse: false,
-        setupImages
+        setupImages,
+        setupImage
     };
 
     let scanKeyHeld = false;
