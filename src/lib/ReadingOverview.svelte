@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import type { Snippet } from "svelte";
-  import { BookCheck, Cloud, Plus } from "@lucide/svelte";
+  import { Archive, BookCheck, Cloud, Plus } from "@lucide/svelte";
   import BookCover from "./BookCover.svelte";
   import HomeStatistics from "./HomeStatistics.svelte";
   import { sortBooks } from "./bookSort.svelte";
@@ -114,7 +114,9 @@
 
 {#snippet details(book: BookMetadata)}
   <span class="line-clamp-2 text-base font-medium leading-snug transition-colors group-hover:text-secondary group-focus-visible:text-secondary">
-    {#if !book.epub}
+    {#if book.epubRemoved}
+      <Archive class="mb-0.5 inline size-3.5" />
+    {:else if !book.epub}
       <Cloud class="mb-0.5 inline size-3.5" />
     {/if}
     {displayTitle(book)}

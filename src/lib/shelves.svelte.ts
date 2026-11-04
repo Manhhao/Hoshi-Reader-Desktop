@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { clearCustomShelf, renameCustomShelf } from "./bookSort.svelte";
+import { shellConfig } from "./shellConfig.svelte";
 import type { BookMetadata, BookShelf, ShelfSource } from "./types";
 
 const ORDERS_KEY = "bookshelfShelfOrders";
@@ -66,6 +67,19 @@ function isReading(book: BookMetadata) {
   return book.progress > 0 && book.progress < 0.999;
 }
 
+export function isCompleted(book: BookMetadata) {
+  return book.completed?.value != null;
+}
+
+export function isFinished(book: BookMetadata) {
+  return isCompleted(book) || book.progress >= 0.999;
+}
+
+export function completionDate(book: BookMetadata) {
+  const value = book.completed?.value;
+  return value ? new Date(value) : null;
+}
+
 function authorKey(name: string) {
   return name.replace(/\s/g, "");
 }
@@ -80,8 +94,10 @@ export function shelfBooks(books: BookMetadata[], source: ShelfSource) {
     }
     case "unshelved": {
       const ids = new Set(shelves.list.flatMap((shelf) => shelf.bookIds));
-      return books.filter((book) => !ids.has(book.id));
+      return books.filter((book) => !ids.has(book.id) && !(shellConfig.showCompleted && isFinished(book)));
     }
+    case "completed":
+      return books.filter(isFinished);
     case "author": {
       const key = authorKey(source.name);
       return books.filter((book) => book.author && authorKey(book.author) === key);
@@ -93,6 +109,7 @@ export function shelfBooks(books: BookMetadata[], source: ShelfSource) {
 
 export function sourceTitle(source: ShelfSource) {
   if ("name" in source) return source.name;
+  if (source.kind === "completed") return "Completed";
   return source.kind === "unshelved" ? "Unshelved" : "All Books";
 }
 

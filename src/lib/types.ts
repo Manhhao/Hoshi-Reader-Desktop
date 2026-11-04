@@ -12,6 +12,8 @@ export type BookMetadata = {
   charactersRead: number;
   charactersTotal: number;
   hasBookInfo: boolean;
+  completed?: Timestamped<number | null> | null;
+  epubRemoved: boolean;
 };
 
 export type Timestamped<T> = {
@@ -31,7 +33,7 @@ export type BookShelf = {
 };
 
 export type ShelfSource =
-  | { kind: "all" | "home" | "unshelved" }
+  | { kind: "all" | "home" | "unshelved" | "completed" }
   | { kind: "shelf" | "author"; name: string };
 
 export type ChapterInfo = {

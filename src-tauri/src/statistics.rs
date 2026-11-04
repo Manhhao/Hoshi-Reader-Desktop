@@ -203,6 +203,7 @@ pub fn archive(app: &AppHandle, book: &BookMetadata) -> Result<(), String> {
         library::read_json::<library::BookInfo>(&root.join(library::BOOKINFO_FILE))
             .map(|info| info.character_count as i64)
     });
+    metadata.completed = book.completed.clone();
     library::save_metadata(&metadata, &destination)
 }
 
@@ -216,6 +217,13 @@ pub fn restore(app: &AppHandle, folder: &str) -> Result<(), String> {
 
     let sessions = SyncBook::merge_records(&load(&root), &load(&archived));
     library::write_json(&root.join(STATISTICS_FILE), &sessions)?;
+    if let Some(mut metadata) = library::load_metadata_at(&root)
+        && let Some(completed) =
+            library::load_metadata_at(&archived).and_then(|archived| archived.completed)
+    {
+        metadata.completed = Timestamped::newest_option(&metadata.completed, &Some(completed));
+        library::save_metadata(&metadata, &root)?;
+    }
     fs::remove_dir_all(&archived).map_err(|error| error.to_string())
 }
 
@@ -223,14 +231,9 @@ fn write_archived_cover(app: &AppHandle, book: &BookMetadata, directory: &Path) 
     let destination = directory.join(STATISTICS_COVER);
     fs::remove_file(&destination).ok();
 
-    let bytes = fs::read(library::cover_url(app, book)?).ok()?;
-    let image = image::load_from_memory(&bytes).ok()?;
-    let image = image.thumbnail(240, 240).to_rgb8();
-    let mut encoded = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 85)
-        .encode_image(&image)
-        .ok()?;
-    fs::write(&destination, encoded).ok()?;
+    if !library::write_thumbnail(&library::cover_url(app, book)?, &destination, 240) {
+        return None;
+    }
     Some(format!(
         "Books/{STATISTICS_ARCHIVE}/{}/{STATISTICS_COVER}",
         book.folder

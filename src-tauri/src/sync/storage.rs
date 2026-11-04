@@ -19,7 +19,7 @@ use crate::sync::model::{
 };
 
 pub const SASAYAKI_MATCH: &str = "sasayaki_match.json";
-const SASAYAKI_TRANSCRIPT: &str = "sasayaki_transcript.json";
+pub const SASAYAKI_TRANSCRIPT: &str = "sasayaki_transcript.json";
 const HIGHLIGHTS: &str = "highlights.json";
 const STATISTICS: &str = "statistics.json";
 const STATISTICS_ARCHIVE: &str = "statistics_archive";
@@ -253,6 +253,7 @@ impl SyncStorage {
         );
         book.files = record.files.clone();
         book.sessions = statistics::load(&root);
+        book.completed = metadata.completed.clone();
 
         if !record.deleted {
             if let Some(bookmark) = library::load_bookmark_at(&root) {
@@ -322,8 +323,22 @@ impl SyncStorage {
             .then(|| book.metadata.value.title.clone());
         metadata.modified = Some(book.metadata.modified);
         metadata.character_count = Some(book.character_count);
+        metadata.completed = book.completed.clone();
         if !book.deleted {
             metadata.shelves = Some(book.shelves.clone());
+            if let Some(published) = book.files.get(&SyncFileType::Epub)
+                && published.value.is_none()
+                && old_record
+                    .as_ref()
+                    .and_then(|record| record.sources.get(&SyncFileType::Epub))
+                    .copied()
+                    .unwrap_or(i64::MIN)
+                    < published.modified
+                && let Some(epub) = metadata.epub.take()
+            {
+                library::delete(&epub_url(&root, &epub))?;
+                library::delete(&root.join(SASAYAKI_TRANSCRIPT))?;
+            }
             if let Some(bookmark) = &book.bookmark {
                 metadata.last_access = metadata
                     .last_access
@@ -483,8 +498,38 @@ impl SyncStorage {
             }
         }
 
-        self.state.books.get_mut(&key).unwrap().pending = true;
+        let record = self.state.books.get_mut(&key).unwrap();
+        record.cleanup.insert(record.generation);
+        record.pending = true;
         self.save_changes(true)
+    }
+
+    pub fn handle_epub_removal(&mut self, folder: &str, cover_changed: bool) -> SyncResult<()> {
+        let key: String = folder.nfc().collect();
+        self.prepare_book(&Self::resolve_book_directory(folder));
+        self.mark_file_changed(&key, SyncFileType::Epub);
+        if cover_changed {
+            self.mark_file_changed(&key, SyncFileType::Cover);
+        }
+        let record = self.state.books.get_mut(&key).unwrap();
+        record.cleanup.insert(record.generation);
+        self.save_changes(true)
+    }
+
+    pub fn is_epub_removed(&self, folder: &str) -> bool {
+        let key: String = folder.nfc().collect();
+        let Some(record) = self.state.books.get(&key) else {
+            return false;
+        };
+        let published = record.files.get(&SyncFileType::Epub);
+        if record
+            .sources
+            .get(&SyncFileType::Epub)
+            .is_some_and(|&source| published.is_none_or(|file| source > file.modified))
+        {
+            return true;
+        }
+        published.is_some_and(|file| file.value.is_none())
     }
 
     pub fn delete_local_book(&mut self, key: &str) -> SyncResult<()> {

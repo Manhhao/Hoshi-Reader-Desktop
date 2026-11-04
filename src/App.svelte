@@ -70,6 +70,11 @@
       .filter((shelf) => shelf.count > 0),
   );
   const unshelvedCount = $derived(shelfBooks(books, { kind: "unshelved" }).length);
+  const completedCount = $derived(shellConfig.showCompleted ? shelfBooks(books, { kind: "completed" }).length : 0);
+
+  $effect(() => {
+    if (source.kind === "completed" && !shellConfig.showCompleted) source = { kind: "home" };
+  });
 
   async function refresh() {
     books = await invoke<BookMetadata[]>("list_books");
@@ -263,6 +268,9 @@
           <ul class="menu w-full gap-0.5 p-2">
             {@render sourceRow({ kind: "home" }, "Home", null)}
             {@render sourceRow({ kind: "all" }, "All Books", books.length)}
+            {#if completedCount > 0}
+              {@render sourceRow({ kind: "completed" }, "Completed", completedCount)}
+            {/if}
             {#if bookShelves.length > 0}
               {@render sourceRow({ kind: "unshelved" }, "Unshelved", unshelvedCount)}
             {/if}

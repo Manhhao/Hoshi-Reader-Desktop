@@ -225,6 +225,8 @@ pub struct SyncBook {
     pub highlights: HashMap<String, Timestamped<Option<SyncHighlight>>>,
     pub sessions: HashMap<String, Timestamped<Option<ReadingSession>>>,
     pub shelves: HashMap<String, Timestamped<bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed: Option<Timestamped<Option<i64>>>,
 }
 
 impl SyncBook {
@@ -240,6 +242,7 @@ impl SyncBook {
             highlights: HashMap::new(),
             sessions: HashMap::new(),
             shelves: HashMap::new(),
+            completed: None,
         }
     }
 
@@ -279,6 +282,7 @@ impl SyncBook {
             result.audiobook = Timestamped::newest_option(&first.audiobook, &second.audiobook);
             result.highlights = Self::merge_records(&first.highlights, &second.highlights);
             result.shelves = Timestamped::merge(&first.shelves, &second.shelves);
+            result.completed = Timestamped::newest_option(&first.completed, &second.completed);
 
             if first.deleted || second.deleted {
                 result.delete();

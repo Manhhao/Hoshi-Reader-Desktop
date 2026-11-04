@@ -685,7 +685,7 @@ pub(super) fn book_folder() -> String {
 
 fn remove_placeholders() -> SyncResult<()> {
     for book in library::load_all_books(app()) {
-        if book.epub.is_some() {
+        if book.epub.is_some() || store().is_epub_removed(&book.folder) {
             continue;
         }
         let root = SyncStorage::book_directory(&book.folder, false);

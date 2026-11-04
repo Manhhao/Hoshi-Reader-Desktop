@@ -22,6 +22,7 @@ pub const BOOKINFO_FILE: &str = "bookinfo.json";
 pub const BOOKMARK_FILE: &str = "bookmark.json";
 pub const PAGES_FILE: &str = "pages.json";
 const METADATA_FILE: &str = "metadata.json";
+const ARCHIVED_COVER: &str = "cover_archived.jpg";
 const SHELVES_FILE: &str = "shelves.json";
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -47,6 +48,8 @@ pub struct BookMetadata {
     pub character_count: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shelves: Option<HashMap<String, Timestamped<bool>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed: Option<Timestamped<Option<i64>>>,
 }
 
 impl BookMetadata {
@@ -69,6 +72,7 @@ impl BookMetadata {
             modified: None,
             character_count: None,
             shelves: None,
+            completed: None,
         }
     }
 }
@@ -88,6 +92,7 @@ pub struct BookListItem {
     pub characters_read: usize,
     pub characters_total: usize,
     pub has_book_info: bool,
+    pub epub_removed: bool,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -245,11 +250,11 @@ pub fn save_pages(app: AppHandle, id: String, pages: serde_json::Value) {
 }
 
 #[tauri::command]
-pub fn mark_book_read(app: AppHandle, id: String) {
+pub fn mark_book_read(app: AppHandle, id: String, completed: i64) {
     let Some(dir) = book_dir(&app, &id) else {
         return;
     };
-    let metadata = load_metadata_at(&dir).unwrap();
+    let mut metadata = load_metadata_at(&dir).unwrap();
     let info = read_json::<BookInfo>(&dir.join(BOOKINFO_FILE));
     let Some(character_count) = info
         .as_ref()
@@ -270,10 +275,91 @@ pub fn mark_book_read(app: AppHandle, id: String) {
         last_modified: Some(now_apple()),
     };
     write_json(&dir.join(BOOKMARK_FILE), &bookmark).ok();
-    let folder = metadata.folder;
+    metadata.completed = Some(Timestamped {
+        modified: now_ms(),
+        value: Some(completed),
+    });
+    save_metadata(&metadata, &dir).ok();
     crate::sync::storage::shared()
-        .handle_book_change(&folder)
+        .handle_book_change(&metadata.folder)
         .ok();
+}
+
+#[tauri::command]
+pub fn set_book_completed(app: AppHandle, id: String, completed: Option<i64>) {
+    let Some(dir) = book_dir(&app, &id) else {
+        return;
+    };
+    let mut metadata = load_metadata_at(&dir).unwrap();
+    metadata.completed = Some(Timestamped {
+        modified: now_ms(),
+        value: completed,
+    });
+    save_metadata(&metadata, &dir).ok();
+    crate::sync::storage::shared()
+        .handle_book_change(&metadata.folder)
+        .ok();
+}
+
+#[tauri::command]
+pub fn book_epub_size(app: AppHandle, id: String) -> Option<u64> {
+    fs::metadata(book_epub_path(&app, &id)?)
+        .ok()
+        .map(|metadata| metadata.len())
+}
+
+#[tauri::command]
+pub fn remove_book_epub(app: AppHandle, id: String) -> Result<(), String> {
+    let Some(dir) = book_dir(&app, &id) else {
+        return Ok(());
+    };
+    let mut metadata = load_metadata_at(&dir).unwrap();
+    let Some(epub) = book_epub_path(&app, &id) else {
+        return Ok(());
+    };
+    delete(&epub)?;
+    delete(&dir.join(crate::sync::storage::SASAYAKI_TRANSCRIPT))?;
+    metadata.epub = None;
+
+    let archived_cover = dir.join(ARCHIVED_COVER);
+    let mut cover_changed = false;
+    if let Some(cover) = cover_url(&app, &metadata)
+        && write_thumbnail(&cover, &archived_cover, 720)
+    {
+        if cover.starts_with(&dir) {
+            delete(&cover)?;
+        }
+        metadata.cover = Some(format!("{BOOKS_DIR}/{}/{ARCHIVED_COVER}", metadata.folder));
+        cover_changed = true;
+    }
+
+    save_metadata(&metadata, &dir)?;
+    crate::sync::storage::shared()
+        .handle_epub_removal(&metadata.folder, cover_changed)
+        .map_err(|error| error.to_string())
+}
+
+pub(crate) fn write_thumbnail(source: &Path, destination: &Path, max_pixel_size: u32) -> bool {
+    let Ok(bytes) = fs::read(source) else {
+        return false;
+    };
+    let Ok(image) = image::load_from_memory(&bytes) else {
+        return false;
+    };
+    let image = if image.width().max(image.height()) > max_pixel_size {
+        image.thumbnail(max_pixel_size, max_pixel_size)
+    } else {
+        image
+    }
+    .to_rgb8();
+    let mut encoded = Vec::new();
+    if image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 85)
+        .encode_image(&image)
+        .is_err()
+    {
+        return false;
+    }
+    fs::write(destination, encoded).is_ok()
 }
 
 #[tauri::command]
@@ -713,6 +799,7 @@ pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String>
         let resource = entry.resource();
         let name = Path::new(resource.key().value()?).file_name()?.to_str()?;
         let bytes = entry.read_bytes().ok()?;
+        fs::remove_file(dir.join(ARCHIVED_COVER)).ok();
         fs::write(dir.join(name), bytes).ok()?;
         Some(format!("{BOOKS_DIR}/{folder}/{name}"))
     });
@@ -726,7 +813,10 @@ pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String>
     meta.renamed_title = existing
         .as_ref()
         .and_then(|existing| existing.renamed_title.clone());
-    meta.shelves = existing.and_then(|existing| existing.shelves);
+    meta.shelves = existing
+        .as_ref()
+        .and_then(|existing| existing.shelves.clone());
+    meta.completed = existing.and_then(|existing| existing.completed);
 
     let saved = save_metadata(&meta, &dir).and_then(|_| process_book_info(&epub, &dir));
     if let Err(error) = saved {
@@ -791,6 +881,8 @@ pub fn list_books(app: AppHandle) -> Vec<BookListItem> {
             let mut meta: BookMetadata = read_json(&dir.join(METADATA_FILE))?;
             repair_missing_cover(&dir, &mut meta);
             let (characters_read, characters_total) = book_characters(&dir, &meta);
+            let epub_removed =
+                meta.epub.is_none() && crate::sync::storage::shared().is_epub_removed(&meta.folder);
             Some(BookListItem {
                 progress: if characters_total > 0 {
                     characters_read as f64 / characters_total as f64
@@ -800,6 +892,7 @@ pub fn list_books(app: AppHandle) -> Vec<BookListItem> {
                 characters_read,
                 characters_total,
                 has_book_info: dir.join(BOOKINFO_FILE).exists(),
+                epub_removed,
                 meta,
             })
         })
