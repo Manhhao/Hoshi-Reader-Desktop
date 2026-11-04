@@ -3,27 +3,47 @@ import { clearCustomShelf, renameCustomShelf } from "./bookSort.svelte";
 import { shellConfig } from "./shellConfig.svelte";
 import type { BookMetadata, BookShelf, ShelfSource } from "./types";
 
-const ORDERS_KEY = "bookshelfShelfOrders";
-
-function storedOrders() {
-  try {
-    return JSON.parse(localStorage.getItem(ORDERS_KEY) ?? "{}") as Record<string, string[]>;
-  } catch {
-    return {};
-  }
-}
+const LEGACY_ORDERS_KEY = "bookshelfShelfOrders";
 
 export const shelves = $state<{ list: BookShelf[]; orders: Record<string, string[]> }>({
   list: [],
-  orders: storedOrders(),
+  orders: {},
 });
 
 export async function loadShelves() {
-  shelves.list = await invoke<BookShelf[]>("load_shelves");
+  [shelves.list, shelves.orders] = await Promise.all([
+    invoke<BookShelf[]>("load_shelves"),
+    invoke<Record<string, string[]>>("shelf_orders"),
+  ]);
 }
 
-export function saveShelfOrders() {
-  localStorage.setItem(ORDERS_KEY, JSON.stringify($state.snapshot(shelves.orders)));
+export async function migrateShelfOrders(books: BookMetadata[]) {
+  let legacy: Record<string, string[]>;
+  try {
+    const stored = localStorage.getItem(LEGACY_ORDERS_KEY);
+    if (!stored) return;
+    legacy = JSON.parse(stored);
+  } catch {
+    return;
+  }
+  const folders = new Map(books.map((book) => [book.id, book.folder]));
+  for (const [name, ids] of Object.entries(legacy)) {
+    if (shelves.orders[name] || !shelves.list.some((shelf) => shelf.name === name)) continue;
+    const order = ids.flatMap((id) => folders.get(id) ?? []);
+    if (order.length) await invoke("set_shelf_order", { name, order });
+  }
+  localStorage.removeItem(LEGACY_ORDERS_KEY);
+  await loadShelves();
+}
+
+export async function saveShelfOrder(name: string) {
+  await invoke("set_shelf_order", { name, order: $state.snapshot(shelves.orders[name]) ?? null });
+}
+
+export async function resetShelfOrder(name: string) {
+  clearCustomShelf(name);
+  await invoke("set_shelf_order", { name, order: null });
+  await loadShelves();
 }
 
 export async function createShelf(name: string) {
@@ -34,8 +54,6 @@ export async function createShelf(name: string) {
 
 export async function deleteShelf(name: string) {
   clearCustomShelf(name);
-  delete shelves.orders[name];
-  saveShelfOrders();
   await invoke("delete_shelf", { name });
   await loadShelves();
 }
@@ -43,10 +61,6 @@ export async function deleteShelf(name: string) {
 export async function renameShelf(name: string, newName: string) {
   await invoke("rename_shelf", { name, newName });
   renameCustomShelf(name, newName);
-  const order = shelves.orders[name];
-  delete shelves.orders[name];
-  if (order) shelves.orders[newName] = order;
-  saveShelfOrders();
   await loadShelves();
 }
 
@@ -54,8 +68,8 @@ export function moveShelves() {
   invoke("move_shelves", { names: shelves.list.map((shelf) => shelf.name) });
 }
 
-export function setShelfOrder(name: string, bookIds: string[]) {
-  shelves.orders[name] = bookIds;
+export function setShelfOrder(name: string, folders: string[]) {
+  shelves.orders[name] = folders;
 }
 
 export async function moveBook(id: string, name: string | null) {

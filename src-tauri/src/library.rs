@@ -24,6 +24,7 @@ pub const PAGES_FILE: &str = "pages.json";
 const METADATA_FILE: &str = "metadata.json";
 const ARCHIVED_COVER: &str = "cover_archived.jpg";
 const SHELVES_FILE: &str = "shelves.json";
+const SHELF_ORDERS_FILE: &str = "shelf_orders.json";
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -1016,6 +1017,42 @@ pub(crate) fn save_shelf_list(app: &AppHandle, shelves: &ShelfList) -> Result<()
     write_json(&shelves_path(app), shelves)
 }
 
+pub type ShelfOrders = HashMap<String, Timestamped<Option<Vec<String>>>>;
+
+pub(crate) fn load_shelf_orders(app: &AppHandle) -> ShelfOrders {
+    read_json(&books_dir(app).join(SHELF_ORDERS_FILE)).unwrap_or_default()
+}
+
+pub(crate) fn save_shelf_orders(app: &AppHandle, orders: &ShelfOrders) -> Result<(), String> {
+    write_json(&books_dir(app).join(SHELF_ORDERS_FILE), orders)
+}
+
+fn update_shelf_order(app: &AppHandle, name: String, order: Option<Vec<String>>) {
+    let mut orders = load_shelf_orders(app);
+    orders.insert(
+        name,
+        Timestamped {
+            modified: now_ms(),
+            value: order,
+        },
+    );
+    save_shelf_orders(app, &orders).ok();
+}
+
+#[tauri::command]
+pub fn shelf_orders(app: AppHandle) -> HashMap<String, Vec<String>> {
+    load_shelf_orders(&app)
+        .into_iter()
+        .filter_map(|(name, order)| order.value.map(|order| (name, order)))
+        .collect()
+}
+
+#[tauri::command]
+pub fn set_shelf_order(app: AppHandle, name: String, order: Option<Vec<String>>) {
+    update_shelf_order(&app, name, order);
+    crate::sync::storage::shared().handle_shelves_change().ok();
+}
+
 #[tauri::command(async)]
 pub fn load_shelves(app: AppHandle) -> Vec<BookShelf> {
     let list = load_shelf_list(&app);
@@ -1121,6 +1158,12 @@ pub fn delete_shelf(app: AppHandle, name: String) {
     for id in &shelf.book_ids {
         update_memberships(&app, &[(name.clone(), false)], id);
     }
+    if load_shelf_orders(&app)
+        .get(&name)
+        .is_some_and(|order| order.value.is_some())
+    {
+        update_shelf_order(&app, name.clone(), None);
+    }
     update_shelf_list(&app, |list| {
         list.insert(
             name,
@@ -1151,6 +1194,13 @@ pub fn rename_shelf(app: AppHandle, name: String, new_name: String) {
                 &book.id,
             );
         }
+    }
+    if let Some(order) = load_shelf_orders(&app)
+        .get(&name)
+        .and_then(|order| order.value.clone())
+    {
+        update_shelf_order(&app, name.clone(), None);
+        update_shelf_order(&app, new_name.clone(), Some(order));
     }
     update_shelf_list(&app, |list| {
         let position = list.get(&name).and_then(|shelf| shelf.value);

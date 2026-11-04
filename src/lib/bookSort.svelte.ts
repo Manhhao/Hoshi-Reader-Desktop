@@ -67,8 +67,8 @@ export function sortBooks(
   readingTimes: Record<string, number> = {},
 ) {
   if (option === "Custom") {
-    const position = new Map(order.map((id, index) => [id, index]));
-    const rank = (book: BookMetadata) => position.get(book.id) ?? order.length;
+    const position = new Map(order.map((folder, index) => [folder, index]));
+    const rank = (book: BookMetadata) => position.get(book.folder) ?? order.length;
     return books.toSorted((a, b) => rank(a) - rank(b));
   }
   const sorted = books.toSorted((a, b) => {

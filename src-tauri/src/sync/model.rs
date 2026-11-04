@@ -324,10 +324,10 @@ pub struct SyncShelves {
 }
 
 impl SyncShelves {
-    pub fn new(shelves: HashMap<String, Timestamped<Option<i64>>>) -> Self {
+    pub fn local() -> Self {
         SyncShelves {
-            shelves,
-            orders: HashMap::new(),
+            shelves: crate::library::load_shelf_list(crate::sync::app()),
+            orders: crate::library::load_shelf_orders(crate::sync::app()),
         }
     }
 

@@ -19,6 +19,7 @@
     Folder,
     ListChecks,
     Plus,
+    RotateCcw,
     Search,
     Trash2,
   } from "@lucide/svelte";
@@ -37,7 +38,8 @@
     createShelf,
     isCompleted,
     moveBook,
-    saveShelfOrders,
+    resetShelfOrder,
+    saveShelfOrder,
     setShelfOrder,
     shelves,
     sourceTitle,
@@ -134,15 +136,27 @@
   const canReorder = $derived(shelfName !== null && option === "Custom" && isSelecting && !query.trim());
 
   const sort = new Sortable({
-    commit: saveShelfOrders,
+    commit: () => {
+      if (shelfName) saveShelfOrder(shelfName);
+    },
     threshold: 5,
     move: (from, to) => {
       if (!shelfName) return;
-      const ids = sortedBooks.map((book) => book.id);
-      ids.splice(to, 0, ids.splice(from, 1)[0]);
-      setShelfOrder(shelfName, ids);
+      const folders = sortedBooks.map((book) => book.folder);
+      folders.splice(to, 0, folders.splice(from, 1)[0]);
+      setShelfOrder(shelfName, folders);
     },
   });
+
+  async function resetOrder(name: string) {
+    if (!(await ask("This restores the default order on all devices.", {
+      title: "Reset Order?",
+      kind: "warning",
+      okLabel: "Reset",
+      cancelLabel: "Cancel",
+    }))) return;
+    await resetShelfOrder(name);
+  }
 
   function startDrag(e: PointerEvent, index: number) {
     sort.dragged = false;
@@ -573,6 +587,12 @@
             <Trash2 class="size-4" />
             Delete
           </button>
+          {#if shelfName !== null && option === "Custom"}
+            <button class="btn btn-ghost btn-sm" disabled={!shelves.orders[shelfName]} onclick={() => resetOrder(shelfName)}>
+              <RotateCcw class="size-4" />
+              Reset Order
+            </button>
+          {/if}
           <button class="btn btn-neutral btn-sm" onclick={clearSelection}>Done</button>
         {:else}
           <label class="input input-sm w-52">

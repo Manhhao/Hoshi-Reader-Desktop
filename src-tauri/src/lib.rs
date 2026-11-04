@@ -129,6 +129,8 @@ pub fn run() {
             library::delete_shelf,
             library::rename_shelf,
             library::move_shelves,
+            library::shelf_orders,
+            library::set_shelf_order,
             library::move_book,
             statistics::load_statistics,
             statistics::save_reading_session,

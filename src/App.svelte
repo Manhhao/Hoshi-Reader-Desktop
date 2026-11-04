@@ -35,6 +35,7 @@
   import {
     authors,
     loadShelves,
+    migrateShelfOrders,
     sameSource,
     shelfBooks,
     shelves,
@@ -228,8 +229,7 @@
     return () => clearInterval(timer);
   });
 
-  refresh();
-  loadShelves();
+  Promise.all([refresh(), loadShelves()]).then(() => migrateShelfOrders(books));
   configureSync().then(() => invoke("gdrive_sync_start"));
   loadCollapsedDictionaries();
   autoUpdateDictionaries();

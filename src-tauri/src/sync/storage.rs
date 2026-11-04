@@ -9,13 +9,13 @@ use tauri::Emitter;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::highlights::{self, HighlightRecords};
-use crate::library::{self, BookMetadata, Bookmark, DISTANT_PAST, ShelfList};
+use crate::library::{self, BookMetadata, Bookmark, DISTANT_PAST};
 use crate::sasayaki::{self, SasayakiMatchData};
 use crate::statistics::{self, Sessions};
 use crate::sync::app;
 use crate::sync::model::{
     SyncBook, SyncBookmark, SyncFileType, SyncFiles, SyncHighlight, SyncMetadata, SyncPlayback,
-    SyncResult, Timestamped,
+    SyncResult, SyncShelves, Timestamped,
 };
 
 pub const SASAYAKI_MATCH: &str = "sasayaki_match.json";
@@ -617,9 +617,10 @@ impl SyncStorage {
         self.save_changes(true)
     }
 
-    pub fn apply_shelves(&self, shelves: &ShelfList) -> SyncResult<()> {
-        if shelves != &library::load_shelf_list(app()) {
-            library::save_shelf_list(app(), shelves)?;
+    pub fn apply_shelves(&self, shelves: &SyncShelves) -> SyncResult<()> {
+        if shelves != &SyncShelves::local() {
+            library::save_shelf_list(app(), &shelves.shelves)?;
+            library::save_shelf_orders(app(), &shelves.orders)?;
             post_books_changed();
         }
         Ok(())

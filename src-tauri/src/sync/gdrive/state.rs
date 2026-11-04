@@ -437,17 +437,17 @@ pub(super) fn merge_book(key: &str, remote: Option<&SyncBook>) -> SyncResult<()>
 async fn sync_shelves() -> SyncResult<()> {
     let files = drive::children(&state_folder(), Some(".shelves.json")).await?;
     let remote = read_state(&files, SyncShelves::merge).await?;
-    let local = SyncShelves::new(library::load_shelf_list(app()));
+    let local = SyncShelves::local();
     let merged = match &remote {
         Some(remote) => SyncShelves::merge(remote, &local),
         None => local,
     };
-    store().apply_shelves(&merged.shelves)?;
+    store().apply_shelves(&merged)?;
     if (Some(&merged) != remote.as_ref() && !merged.shelves.is_empty()) || files.len() > 1 {
         write_state(&merged, ".shelves.json", &files).await?;
     }
 
     let mut store = store();
-    store.state.shelves_pending = library::load_shelf_list(app()) != merged.shelves;
+    store.state.shelves_pending = SyncShelves::local() != merged;
     store.save()
 }
