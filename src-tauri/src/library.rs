@@ -594,6 +594,23 @@ fn image_paths(content: &str, chapter_key: &str, manifest_keys: &HashSet<String>
         .collect()
 }
 
+pub(crate) fn process_book_info(epub: &Epub, root: &Path) -> Result<(), String> {
+    let info = process_book(epub);
+    write_json(&root.join(BOOKINFO_FILE), &info)?;
+
+    if let Some(bookmark) = load_bookmark_at(root) {
+        let position = info.resolve_character_position(bookmark.character_count);
+        let resolved = Bookmark {
+            chapter_index: position.map_or(0, |position| position.0),
+            progress: position.map_or(0.0, |position| position.1),
+            character_count: bookmark.character_count,
+            last_modified: bookmark.last_modified,
+        };
+        write_json(&root.join(BOOKMARK_FILE), &resolved)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn process_book(epub: &Epub) -> BookInfo {
     let mut info = BookInfo::default();
     let mut toc_fragments: HashMap<String, Vec<String>> = HashMap::new();
@@ -705,24 +722,7 @@ pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String>
         .and_then(|existing| existing.renamed_title.clone());
     meta.shelves = existing.and_then(|existing| existing.shelves);
 
-    let info = process_book(&epub);
-    let saved = save_metadata(&meta, &dir)
-        .and_then(|_| write_json(&dir.join(BOOKINFO_FILE), &info))
-        .and_then(|_| match load_bookmark_at(&dir) {
-            Some(bookmark) => {
-                let position = info.resolve_character_position(bookmark.character_count);
-                write_json(
-                    &dir.join(BOOKMARK_FILE),
-                    &Bookmark {
-                        chapter_index: position.map_or(0, |position| position.0),
-                        progress: position.map_or(0.0, |position| position.1),
-                        character_count: bookmark.character_count,
-                        last_modified: bookmark.last_modified,
-                    },
-                )
-            }
-            None => Ok(()),
-        });
+    let saved = save_metadata(&meta, &dir).and_then(|_| process_book_info(&epub, &dir));
     if let Err(error) = saved {
         fs::remove_dir_all(&dir).ok();
         return Err(error);

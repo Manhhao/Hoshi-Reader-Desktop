@@ -62,18 +62,7 @@ pub fn open_book(
     let document = book_document(&epub);
     let info = library::load_book_info_at(&root);
     if info.is_none() {
-        let processed = library::process_book(&epub);
-        library::write_json(&root.join(library::BOOKINFO_FILE), &processed).ok();
-        if let Some(bookmark) = library::load_bookmark_at(&root) {
-            let position = processed.resolve_character_position(bookmark.character_count);
-            let resolved = library::Bookmark {
-                chapter_index: position.map_or(0, |position| position.0),
-                progress: position.map_or(0.0, |position| position.1),
-                character_count: bookmark.character_count,
-                last_modified: bookmark.last_modified,
-            };
-            library::write_json(&root.join(library::BOOKMARK_FILE), &resolved).ok();
-        }
+        library::process_book_info(&epub, &root).ok();
     } else if info.is_some_and(|info| {
         info.images.is_none()
             || !document

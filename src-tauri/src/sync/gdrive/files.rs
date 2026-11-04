@@ -684,6 +684,16 @@ async fn download_file(
     };
     let destination = root.join(&file_name);
     storage::write_atomic(&destination, &data)?;
+    if file_type == SyncFileType::Epub {
+        let root = root.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(epub) = rbook::Epub::open(&destination) {
+                library::process_book_info(&epub, &root).ok();
+            }
+        })
+        .await
+        .ok();
+    }
     let relative = format!(
         "Books/{}{}/{}",
         if record.deleted {
