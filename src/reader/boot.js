@@ -93,6 +93,7 @@
         margin: 0 !important;
         padding: 0 !important;
         color: var(--hoshi-text-color) !important;
+        background-color: transparent !important;
         writing-mode: ${vertical ? "vertical-rl" : "horizontal-tb"} !important;
       }
       body * {
