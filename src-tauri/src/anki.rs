@@ -108,6 +108,7 @@ pub struct AnkiConfig {
     pub available_decks: Vec<String>,
     pub available_note_types: Vec<NoteType>,
     pub selected_glossary_fallback: String,
+    pub popup_selection_text_fallback: String,
     pub show_all_handlebars: bool,
     pub audio_sources: Vec<AudioSource>,
     pub audio_enable_autoplay: bool,
@@ -407,19 +408,23 @@ fn handlebar_to_value(
         return single_glossaries.get(name).cloned().unwrap_or_default();
     }
 
+    let resolve_fallback = |fallback: &str| {
+        if fallback.is_empty()
+            || fallback.starts_with("{selected-glossary")
+            || fallback == "{popup-selection-text}"
+        {
+            String::new()
+        } else {
+            handlebar_to_value(app, config, fallback, context, content, single_glossaries)
+        }
+    };
+
     let selected_glossary = || {
         let selected = get("selectedDictionary");
         single_glossaries
             .get(&selected)
             .cloned()
-            .unwrap_or_else(|| {
-                let fb = &config.selected_glossary_fallback;
-                if fb.is_empty() || fb.starts_with("{selected-glossary") {
-                    String::new()
-                } else {
-                    handlebar_to_value(app, config, fb, context, content, single_glossaries)
-                }
-            })
+            .unwrap_or_else(|| resolve_fallback(&config.selected_glossary_fallback))
     };
 
     let definition =
@@ -438,6 +443,7 @@ fn handlebar_to_value(
     match handlebar {
         "{expression}" => get("expression"),
         "{reading}" => get("reading"),
+        "{furigana}" => get("furigana"),
         "{furigana-plain}" => get("furiganaPlain"),
         "{glossary}" => get("glossary"),
         "{glossary-brief}" => strip_glossary_headers(&get("glossary")),
@@ -485,7 +491,14 @@ fn handlebar_to_value(
         "{cloze-prefix}" => cloze_parts(&context.sentence, &get("matched"), context.cloze_offset).0,
         "{cloze-body}" => cloze_parts(&context.sentence, &get("matched"), context.cloze_offset).1,
         "{cloze-suffix}" => cloze_parts(&context.sentence, &get("matched"), context.cloze_offset).2,
-        "{popup-selection-text}" => get("popupSelectionText"),
+        "{popup-selection-text}" => {
+            let selection = get("popupSelectionText");
+            if selection.is_empty() {
+                resolve_fallback(&config.popup_selection_text_fallback)
+            } else {
+                selection
+            }
+        }
         "{document-title}" => context.document_title.clone().unwrap_or_default(),
         "{audio}" => get("audio"),
         _ => String::new(),

@@ -389,6 +389,7 @@
   const handlebars: { name: string; advanced?: boolean }[] = [
     { name: "{expression}" },
     { name: "{reading}" },
+    { name: "{furigana}", advanced: true },
     { name: "{furigana-plain}" },
     { name: "{audio}" },
     { name: "{glossary}" },
@@ -682,9 +683,11 @@
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
-  function pickFallback(value: string, e: MouseEvent & { currentTarget: HTMLElement }) {
+  type FallbackKey = "selectedGlossaryFallback" | "popupSelectionTextFallback";
+
+  function pickFallback(key: FallbackKey, value: string) {
     if (!anki) return;
-    anki.selectedGlossaryFallback = value;
+    anki[key] = value;
     saveAnki();
     (document.activeElement as HTMLElement | null)?.blur();
   }
@@ -842,6 +845,50 @@
       {/each}
     </ul>
   </div>
+{/snippet}
+
+{#snippet fallbackField(label: string, key: FallbackKey)}
+  {#if anki}
+    <div class="grid gap-1.5">
+      <span class="text-sm font-medium">{label} Fallback</span>
+      <div class="join w-full">
+        <input
+          class="input join-item w-full"
+          bind:value={anki[key]}
+          onchange={saveAnki}
+          placeholder="None"
+        />
+        <div class="dropdown dropdown-end" use:dropdownFlip>
+          <div
+            tabindex="0"
+            role="button"
+            class="btn join-item btn-square"
+          >
+            <ChevronDown class="size-4" />
+          </div>
+          <ul
+            tabindex="-1"
+            class="dropdown-content menu z-30 my-1 w-72 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
+          >
+            <li>
+              <button onclick={() => pickFallback(key, "")}>None</button>
+            </li>
+            <div class="divider my-0"></div>
+            {#each fallbackOptions as option (option)}
+              <li>
+                <button
+                  class="font-mono text-xs"
+                  onclick={() => pickFallback(key, option)}
+                >
+                  {option}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {/if}
 {/snippet}
 
 <svelte:window
@@ -1775,45 +1822,8 @@
                 onchange={saveAnki}
               />
 
-              <div class="grid gap-1.5">
-                <span class="text-sm font-medium">{"{selected-glossary}"} Fallback</span>
-                <div class="join w-full">
-                  <input
-                    class="input join-item w-full"
-                    bind:value={anki.selectedGlossaryFallback}
-                    onchange={saveAnki}
-                    placeholder="None"
-                  />
-                  <div class="dropdown dropdown-end" use:dropdownFlip>
-                    <div
-                      tabindex="0"
-                      role="button"
-                      class="btn join-item btn-square"
-                    >
-                      <ChevronDown class="size-4" />
-                    </div>
-                    <ul
-                      tabindex="-1"
-                      class="dropdown-content menu z-30 my-1 w-72 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
-                    >
-                      <li>
-                        <button onclick={(e) => pickFallback("", e)}>None</button>
-                      </li>
-                      <div class="divider my-0"></div>
-                      {#each fallbackOptions as option (option)}
-                        <li>
-                          <button
-                            class="font-mono text-xs"
-                            onclick={(e) => pickFallback(option, e)}
-                          >
-                            {option}
-                          </button>
-                        </li>
-                      {/each}
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              {@render fallbackField("{selected-glossary}", "selectedGlossaryFallback")}
+              {@render fallbackField("{popup-selection-text}", "popupSelectionTextFallback")}
 
               <button
                 class="btn btn-ghost btn-sm -mx-2 justify-between px-2 text-sm font-normal"

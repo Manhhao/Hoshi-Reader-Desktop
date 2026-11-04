@@ -232,6 +232,14 @@ function buildFuriganaEl(parent, expression, reading) {
     return segments.length === 1 && segments[0][1];
 }
 
+function constructFurigana(expression, reading) {
+    let result = '';
+    for (const [text, furigana] of segmentFurigana(expression, reading)) {
+        result += furigana ? `<ruby>${text}<rt>${furigana}</rt></ruby>` : text;
+    }
+    return result;
+}
+
 function constructFuriganaPlain(expression, reading) {
     let result = '';
     for (const [text, furigana] of segmentFurigana(expression, reading)) {
@@ -845,6 +853,7 @@ function getFrequencyHarmonicRank(frequencies) {
 
 async function mineEntry(expression, reading, frequencies, pitches, rules, matched, entryIndex, popupSelectionText, slotIndex) {
     const idx = entryIndex || 0;
+    const furigana = constructFurigana(expression, reading);
     const furiganaPlain = constructFuriganaPlain(expression, reading);
     currentDictionaryMedia = new Map();
     const glossary = constructGlossaryHtml(idx);
@@ -867,6 +876,7 @@ async function mineEntry(expression, reading, frequencies, pitches, rules, match
         expression,
         reading,
         matched,
+        furigana,
         furiganaPlain,
         frequenciesHtml,
         freqHarmonicRank,

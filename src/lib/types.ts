@@ -244,6 +244,7 @@ export type AnkiSettings = {
   availableDecks: string[];
   availableNoteTypes: AnkiNoteType[];
   selectedGlossaryFallback: string;
+  popupSelectionTextFallback: string;
   showAllHandlebars: boolean;
   audioSources: AudioSource[];
   audioEnableAutoplay: boolean;
