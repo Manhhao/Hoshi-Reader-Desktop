@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use rbook::Epub;
+use rbook::epub::manifest::EpubManifestEntry;
+use rbook::epub::spine::EpubSpineEntry;
 use rbook::epub::toc::EpubTocEntry;
 use regex::Regex;
 use serde::de::DeserializeOwned;
@@ -197,6 +199,9 @@ static RE_RP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<rp[^>]*>.*?</
 static RE_SCRIPT_STYLE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<(?:script|style)[^>]*>.*?</(?:script|style)>").unwrap());
 static RE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
+static RE_NAV_ANCHOR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)<a[^>]*?hrefs*=s*["']([^"']*)["'][^>]*>(.*?)</a>"#).unwrap()
+});
 static RE_NUMERIC_ENTITY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"&#[xX]?[0-9A-Fa-f]+;").unwrap());
 pub const CHARACTER_CLASS: &str = r"0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ가-힣ㄱ-ㆎ\p{Radical}\p{Unified_Ideograph}";
@@ -718,7 +723,7 @@ pub(crate) fn process_book(epub: &Epub) -> BookInfo {
     let mut images = Vec::new();
     let mut seen_images: HashSet<String> = HashSet::new();
     for (index, entry) in epub.spine().iter().enumerate() {
-        let Some(item) = entry.manifest_entry() else {
+        let Some(item) = spine_item(&entry) else {
             continue;
         };
         let Some(href) = item.resource().key().value().map(normalize_resource_key) else {
@@ -754,12 +759,72 @@ pub(crate) fn process_book(epub: &Epub) -> BookInfo {
     info
 }
 
-fn find_cover_in_manifest(epub: &Epub) -> Option<rbook::epub::manifest::EpubManifestEntry<'_>> {
+const XHTML: &str = "application/xhtml+xml";
+const SVG: &str = "image/svg+xml";
+
+/// The manifest item a spine entry reads, switching a non-XHTML item (e.g. SVG) to its XHTML
+/// `fallback` when it has one.
+pub(crate) fn spine_item<'a>(entry: &EpubSpineEntry<'a>) -> Option<EpubManifestEntry<'a>> {
+    let item = entry.manifest_entry()?;
+    if item.media_type() != XHTML
+        && let Some(fallback) = item.fallback().filter(|f| f.media_type() == XHTML)
+    {
+        return Some(fallback);
+    }
+    Some(item)
+}
+
+/// Nav labels that contain ruby, rebuilt without their `<rt>`/`<rp>` text and keyed by raw href.
+/// rbook flattens every text node into the label, readings included.
+pub(crate) fn ruby_toc_labels(epub: &Epub) -> HashMap<String, String> {
+    let Some(html) = epub
+        .manifest()
+        .by_property("nav")
+        .next()
+        .and_then(|nav| nav.read_str().ok())
+    else {
+        return HashMap::new();
+    };
+    RE_NAV_ANCHOR
+        .captures_iter(&html)
+        .filter(|c| c[2].contains("<rt") || c[2].contains("<rp"))
+        .map(|c| {
+            let text = RE_RT.replace_all(&c[2], "");
+            let text = RE_RP.replace_all(&text, "");
+            let text = RE_TAG.replace_all(&text, "");
+            let text = text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&amp;", "&");
+            (c[1].replace("&amp;", "&"), text)
+        })
+        .collect()
+}
+
+pub(crate) fn toc_label(entry: &EpubTocEntry, ruby_labels: &HashMap<String, String>) -> String {
+    entry
+        .href_raw()
+        .and_then(|href| ruby_labels.get(href.as_ref()))
+        .filter(|label| !label.is_empty())
+        .cloned()
+        .unwrap_or_else(|| entry.label().to_string())
+}
+
+fn find_cover_in_manifest(epub: &Epub) -> Option<EpubManifestEntry<'_>> {
     let manifest = epub.manifest();
     manifest
         .by_property("cover-image")
-        .next()
-        .or_else(|| manifest.cover_image())
+        .find(|entry| entry.media_type() != SVG)
+        .or_else(|| {
+            manifest
+                .cover_image()
+                .filter(|entry| entry.media_type() != SVG)
+        })
         .or_else(|| {
             manifest.iter().find(|entry| {
                 entry.id().to_ascii_lowercase().contains("cover")

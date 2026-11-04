@@ -229,7 +229,7 @@ pub fn build_source(app: &AppHandle, id: &str) -> Result<Source, String> {
         if !entry.is_linear() {
             continue;
         }
-        let Some(item) = entry.manifest_entry() else {
+        let Some(item) = library::spine_item(&entry) else {
             continue;
         };
         if item.properties().as_str().contains("nav") {

@@ -41,19 +41,20 @@ pub struct SearchResult {
 fn chapter_labels(
     entry: &EpubTocEntry,
     parent: Option<&str>,
+    ruby_labels: &HashMap<String, String>,
     labels: &mut HashMap<String, String>,
 ) {
     for child in entry.iter() {
-        let label = parent.unwrap_or_else(|| child.label());
+        let label = parent.map_or_else(|| library::toc_label(&child, ruby_labels), str::to_string);
         if let Some(key) = child.manifest_entry().and_then(|item| {
             item.resource()
                 .key()
                 .value()
                 .map(library::normalize_resource_key)
         }) {
-            labels.entry(key).or_insert_with(|| label.to_string());
+            labels.entry(key).or_insert_with(|| label.clone());
         }
-        chapter_labels(&child, Some(label), labels);
+        chapter_labels(&child, Some(&label), ruby_labels, labels);
     }
 }
 
@@ -188,12 +189,12 @@ pub async fn search_book(
             .unwrap();
         let mut labels = HashMap::new();
         if let Some(root) = epub.toc().contents() {
-            chapter_labels(&root, None, &mut labels);
+            chapter_labels(&root, None, &library::ruby_toc_labels(&epub), &mut labels);
         }
         let mut label = "";
         let mut results = Vec::new();
         for entry in epub.spine().iter() {
-            let Some(item) = entry.manifest_entry() else {
+            let Some(item) = library::spine_item(&entry) else {
                 continue;
             };
             let href = library::normalize_resource_key(item.resource().key().value().unwrap());
