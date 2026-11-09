@@ -13,6 +13,7 @@ export type StatsConfig = {
   statisticsPauseInBackground: boolean;
   statisticsPauseWhenIdle: boolean;
   statisticsIdleTime: number;
+  statisticsSkipEmptySessions: boolean;
 };
 
 const defaults: StatsConfig = {
@@ -25,6 +26,7 @@ const defaults: StatsConfig = {
   statisticsPauseInBackground: true,
   statisticsPauseWhenIdle: false,
   statisticsIdleTime: 5,
+  statisticsSkipEmptySessions: false,
 };
 
 const store = persisted<StatsConfig>("stats.config", defaults);

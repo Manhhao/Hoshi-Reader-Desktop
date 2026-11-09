@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { statsConfig } from "./statsConfig.svelte";
 import { dayKey } from "./statsModel.svelte";
 import type { ReadingDay, ReadingSession, Sessions } from "./types";
 
@@ -141,6 +142,7 @@ export class StatsTracker {
   }
 
   private async saveStats() {
+    if (statsConfig.statisticsSkipEmptySessions && this.currentSession.charactersRead === 0) return;
     this.applySessions(
       await invoke<Sessions>("save_reading_session", {
         folder: this.folder,

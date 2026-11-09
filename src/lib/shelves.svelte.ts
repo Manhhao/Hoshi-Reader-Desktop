@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { clearCustomShelf, renameCustomShelf } from "./bookSort.svelte";
+import { series } from "./series";
+import { seriesStore } from "./seriesStore.svelte";
 import { shellConfig } from "./shellConfig.svelte";
 import type { BookMetadata, BookShelf, ShelfSource } from "./types";
 
@@ -112,6 +114,8 @@ export function shelfBooks(books: BookMetadata[], source: ShelfSource) {
     }
     case "completed":
       return books.filter(isFinished);
+    case "series":
+      return series(books, seriesStore.names).find((group) => group.key === source.key)?.books ?? [];
     case "author": {
       const key = authorKey(source.name);
       return books.filter((book) => book.author && authorKey(book.author) === key);
@@ -130,6 +134,7 @@ export function sourceTitle(source: ShelfSource) {
 export function sameSource(a: ShelfSource, b: ShelfSource) {
   if (a.kind !== b.kind) return false;
   if (a.kind === "author" && b.kind === "author") return authorKey(a.name) === authorKey(b.name);
+  if (a.kind === "series" && b.kind === "series") return a.key === b.key;
   return !("name" in a) || a.name === (b as { name: string }).name;
 }
 

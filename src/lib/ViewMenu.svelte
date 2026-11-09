@@ -1,12 +1,14 @@
 <script lang="ts">
   import { ALargeSmall, ArrowDown, ArrowUp, Clock, GripVertical, Hourglass, Percent, SlidersHorizontal } from "@lucide/svelte";
-  import { bookSort, reverseBookSort, setBookSort, sortOption } from "./bookSort.svelte";
   import { saveShellConfig, shellConfig } from "./shellConfig.svelte";
   import type { SortOption } from "./types";
 
-  let { shelf }: { shelf: string | null } = $props();
-
-  const option = $derived(sortOption(shelf));
+  let {
+    option,
+    reversed,
+    custom,
+    onpick,
+  }: { option: SortOption; reversed: boolean; custom: boolean; onpick: (option: SortOption) => void } = $props();
 
   const options = [
     ["Recent", Clock],
@@ -35,8 +37,7 @@
   });
 
   function pick(next: SortOption) {
-    if (option === next && next !== "Custom") reverseBookSort();
-    else setBookSort(next, shelf);
+    onpick(next);
     open = false;
   }
 </script>
@@ -58,7 +59,7 @@
               <Icon class="size-4" />
               {value}
               {#if option === value}
-                {#if (value === "Title") !== bookSort.reversed}
+                {#if (value === "Title") !== reversed}
                   <ArrowUp class="ml-auto size-3.5" />
                 {:else}
                   <ArrowDown class="ml-auto size-3.5" />
@@ -67,7 +68,7 @@
             </button>
           </li>
         {/each}
-        {#if shelf !== null}
+        {#if custom}
           <li>
             <button
               class={option === "Custom" ? "menu-active" : ""}

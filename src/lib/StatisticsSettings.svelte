@@ -120,6 +120,12 @@
   {/if}
   <SettingToggle
     compact
+    label="Skip Saving Empty Sessions"
+    bind:checked={statsConfig.statisticsSkipEmptySessions}
+    onchange={saveStatsConfig}
+  />
+  <SettingToggle
+    compact
     label="Hide Stats Overview on Home"
     bind:checked={statsConfig.statisticsHideOnHome}
     onchange={saveStatsConfig}

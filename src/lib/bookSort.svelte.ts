@@ -14,6 +14,28 @@ function storedCustomShelves() {
 
 const storedOption = localStorage.getItem(KEY);
 
+const romanValues: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+const romanPattern = /(?<=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー々] ?)[IVXLC]+(?![A-Za-z])/gu;
+const validRoman = /^C{0,3}(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
+const parts: Record<string, string> = { 上: "1", 中: "2", 下: "3", 前: "1", 後: "2" };
+
+function romanToNumber(roman: string) {
+  let total = 0;
+  for (let i = 0; i < roman.length; i++) {
+    const value = romanValues[roman[i]];
+    total += value < (romanValues[roman[i + 1]] ?? 0) ? -value : value;
+  }
+  return total;
+}
+
+export function titleKey(title: string) {
+  return title
+    .normalize("NFKC")
+    .replace(romanPattern, (roman) => (validRoman.test(roman) ? String(romanToNumber(roman)) : roman))
+    .replace(/\(([上中下前後])\)/g, (_, part: string) => `(${parts[part]})`)
+    .replace(/(?<=\s)[上中下](?=\s|$)/g, (part) => parts[part]);
+}
+
 export const bookSort = $state<{ option: SortOption; reversed: boolean; customShelves: string[] }>({
   option: storedOption === "Title" || storedOption === "Progress" || storedOption === "Time Read" ? storedOption : "Recent",
   reversed: localStorage.getItem(REVERSED_KEY) === "true",
@@ -71,10 +93,11 @@ export function sortBooks(
     const rank = (book: BookMetadata) => position.get(book.folder) ?? order.length;
     return books.toSorted((a, b) => rank(a) - rank(b));
   }
+  const keys = option === "Title" ? new Map(books.map((book) => [book.id, titleKey(book.renamedTitle ?? book.title)])) : null;
   const sorted = books.toSorted((a, b) => {
     switch (option) {
       case "Title":
-        return (a.renamedTitle ?? a.title).localeCompare(b.renamedTitle ?? b.title, undefined, {
+        return keys!.get(a.id)!.localeCompare(keys!.get(b.id)!, undefined, {
           numeric: true,
           sensitivity: "base",
         });

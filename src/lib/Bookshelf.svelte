@@ -28,6 +28,8 @@
   import ReadingOverview from "./ReadingOverview.svelte";
   import Titlebar from "./Titlebar.svelte";
   import ViewMenu from "./ViewMenu.svelte";
+  import { series } from "./series";
+  import { resetSeriesOrder, saveSeries, seriesSort, seriesStore, setSeriesOrder, setSeriesSort } from "./seriesStore.svelte";
   import { isMac } from "./platform";
   import { relativeDate } from "./relativeDate";
   import { schemeUrl } from "./scheme";
@@ -61,6 +63,7 @@
     onDeleteLocal,
     onRename,
     onEditAuthor,
+    onEditSeries,
     onReload,
     onStatistics,
   }: {
@@ -73,6 +76,7 @@
     onDeleteLocal: (id: string) => Promise<void>;
     onRename: (id: string, title: string) => void;
     onEditAuthor: (id: string, author: string) => void;
+    onEditSeries: (id: string, series: string) => void;
     onReload: () => Promise<void>;
     onStatistics: () => void;
   } = $props();
@@ -83,7 +87,13 @@
 
   const shelfName = $derived(source.kind === "shelf" ? source.name : null);
 
-  const option = $derived(sortOption(shelfName));
+  const seriesKey = $derived(source.kind === "series" ? source.key : null);
+  const canCustom = $derived(shelfName !== null || seriesKey !== null);
+  const option = $derived(seriesKey !== null ? seriesSort(seriesKey).option : sortOption(shelfName));
+  const reversed = $derived(seriesKey !== null ? seriesSort(seriesKey).reversed : bookSort.reversed);
+  const order = $derived(
+    seriesKey !== null ? (seriesStore.orders[seriesKey] ?? []) : shelfName ? (shelves.orders[shelfName] ?? []) : [],
+  );
 
   let readingTimes = $state<Record<string, number>>({});
 
@@ -110,11 +120,12 @@
   const sortedBooks = $derived(
     source.kind === "completed" && option === "Recent"
       ? sortCompleted(books)
-      : sortBooks(books, option, shelfName ? (shelves.orders[shelfName] ?? []) : [], bookSort.reversed, readingTimes),
+      : sortBooks(books, option, order, reversed, readingTimes),
   );
 
   function sortBy(next: SortOption) {
-    if (option === next) reverseBookSort();
+    if (seriesKey !== null) setSeriesSort(seriesKey, next);
+    else if (option === next && next !== "Custom") reverseBookSort();
     else setBookSort(next, shelfName);
   }
 
@@ -133,29 +144,31 @@
   let anchor = $state<number | null>(null);
 
   const selectedBooks = $derived(library.filter((book) => selectedIds.includes(book.id)));
-  const canReorder = $derived(shelfName !== null && option === "Custom" && isSelecting && !query.trim());
+  const canReorder = $derived(canCustom && option === "Custom" && isSelecting && !query.trim());
 
   const sort = new Sortable({
     commit: () => {
-      if (shelfName) saveShelfOrder(shelfName);
+      if (seriesKey !== null) saveSeries();
+      else if (shelfName) saveShelfOrder(shelfName);
     },
     threshold: 5,
     move: (from, to) => {
-      if (!shelfName) return;
       const folders = sortedBooks.map((book) => book.folder);
       folders.splice(to, 0, folders.splice(from, 1)[0]);
-      setShelfOrder(shelfName, folders);
+      if (seriesKey !== null) setSeriesOrder(seriesKey, folders);
+      else if (shelfName) setShelfOrder(shelfName, folders);
     },
   });
 
-  async function resetOrder(name: string) {
-    if (!(await ask("This restores the default order on all devices.", {
+  async function resetOrder() {
+    if (!(await ask(seriesKey !== null ? "This restores the default order." : "This restores the default order on all devices.", {
       title: "Reset Order?",
       kind: "warning",
       okLabel: "Reset",
       cancelLabel: "Cancel",
     }))) return;
-    await resetShelfOrder(name);
+    if (seriesKey !== null) resetSeriesOrder(seriesKey);
+    else if (shelfName) await resetShelfOrder(shelfName);
   }
 
   function startDrag(e: PointerEvent, index: number) {
@@ -407,6 +420,24 @@
     authorDialog?.close();
   }
 
+  let seriesDialog = $state<HTMLDialogElement>();
+  let seriesBook = $state<BookMetadata | null>(null);
+  let seriesName = $state("");
+  let seriesText = $state("");
+
+  function openEditSeries(book: BookMetadata) {
+    seriesBook = book;
+    seriesName = series(library, seriesStore.names).find((group) => group.books.some((entry) => entry.id === book.id))?.name ?? "";
+    seriesText = seriesName;
+    seriesDialog?.showModal();
+  }
+
+  function saveEditSeries() {
+    const text = seriesText.trim();
+    if (seriesBook && (seriesBook.series || text !== seriesName)) onEditSeries(seriesBook.id, text);
+    seriesDialog?.close();
+  }
+
   let toast = $state<ReturnType<typeof Toast>>();
 
   async function showMenu(book: BookMetadata, e: MouseEvent) {
@@ -428,6 +459,9 @@
       await Submenu.new({ text: "Mark", items: await markItems([book]) }),
       { id: `rename-${book.id}`, text: "Rename", action: () => openRename(book) },
       { id: `author-${book.id}`, text: "Edit Author", action: () => openEditAuthor(book) },
+      ...(shellConfig.showSeries
+        ? [{ id: `series-${book.id}`, text: "Edit Series", action: () => openEditSeries(book) }]
+        : []),
       { id: `delete-${book.id}`, text: "Delete", action: () => deleteBook(book) },
     ]);
   }
@@ -510,7 +544,7 @@
     <button class="inline-flex items-center gap-1 hover:text-base-content {option === value ? 'text-base-content' : ''}" onclick={() => sortBy(value)}>
       {label}
       {#if option === value}
-        {#if (value === "Title") !== bookSort.reversed}
+        {#if (value === "Title") !== reversed}
           <ArrowUp class="size-3" />
         {:else}
           <ArrowDown class="size-3" />
@@ -592,8 +626,8 @@
             <Trash2 class="size-4" />
             Delete
           </button>
-          {#if shelfName !== null && option === "Custom"}
-            <button class="btn btn-ghost btn-sm" disabled={!shelves.orders[shelfName]} onclick={() => resetOrder(shelfName)}>
+          {#if canCustom && option === "Custom"}
+            <button class="btn btn-ghost btn-sm" disabled={order.length === 0} onclick={resetOrder}>
               <RotateCcw class="size-4" />
               Reset Order
             </button>
@@ -604,7 +638,7 @@
             <Search class="size-4 text-base-content/50" />
             <input type="search" placeholder="Search" autocomplete="off" spellcheck="false" bind:value={query} />
           </label>
-          <ViewMenu shelf={shelfName} />
+          <ViewMenu {option} {reversed} custom={canCustom} onpick={sortBy} />
           <button class="btn btn-ghost btn-sm btn-square" title="Select" onclick={() => (isSelecting = true)}><ListChecks class="size-4" /></button>
           <button class="btn btn-neutral btn-sm btn-square" onclick={onImport}>
             <Plus class="size-4" />
@@ -728,6 +762,29 @@
           <button class="btn btn-sm">Cancel</button>
         </form>
         <button class="btn btn-neutral btn-sm" onclick={saveAuthor}>Save</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" bind:this={seriesDialog}>
+    <div class="modal-box">
+      <h3 class="mb-4 text-base font-semibold">Edit Series</h3>
+      <input
+        class="input w-full"
+        placeholder="Series"
+        bind:value={seriesText}
+        onkeydown={(e) => {
+          if (e.key === "Enter") saveEditSeries();
+        }}
+      />
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn btn-sm">Cancel</button>
+        </form>
+        <button class="btn btn-neutral btn-sm" onclick={saveEditSeries}>Save</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop">

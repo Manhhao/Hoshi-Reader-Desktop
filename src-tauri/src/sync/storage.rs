@@ -318,6 +318,7 @@ impl SyncStorage {
         if let Some(old) = &old_metadata {
             metadata.id = old.id.clone();
             metadata.epub = old.epub.clone();
+            metadata.series = old.series.clone();
         }
         metadata.renamed_title = (metadata.title != book.metadata.value.title)
             .then(|| book.metadata.value.title.clone());

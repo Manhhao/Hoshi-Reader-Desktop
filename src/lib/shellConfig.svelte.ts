@@ -2,6 +2,7 @@ import { persisted } from "./persisted.svelte";
 
 export type ShellConfig = {
   sidebarWidth: number;
+  showSeries: boolean;
   showAuthors: boolean;
   showCompleted: boolean;
   bookshelfCoverMode: "Show" | "Blur" | "Hide";
@@ -10,6 +11,7 @@ export type ShellConfig = {
 
 const defaults: ShellConfig = {
   sidebarWidth: 176,
+  showSeries: false,
   showAuthors: true,
   showCompleted: true,
   bookshelfCoverMode: "Show",

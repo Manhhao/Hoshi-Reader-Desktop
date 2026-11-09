@@ -27,6 +27,7 @@ const METADATA_FILE: &str = "metadata.json";
 const ARCHIVED_COVER: &str = "cover_archived.jpg";
 const SHELVES_FILE: &str = "shelves.json";
 const SHELF_ORDERS_FILE: &str = "shelf_orders.json";
+const SERIES_FILE: &str = "series.json";
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +54,8 @@ pub struct BookMetadata {
     pub shelves: Option<HashMap<String, Timestamped<bool>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed: Option<Timestamped<Option<i64>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
 }
 
 impl BookMetadata {
@@ -76,6 +79,7 @@ impl BookMetadata {
             character_count: None,
             shelves: None,
             completed: None,
+            series: None,
         }
     }
 }
@@ -1058,6 +1062,26 @@ pub fn rename_book(app: AppHandle, id: String, title: String) {
 #[tauri::command(async)]
 pub fn epub_author(app: AppHandle, id: String) -> Option<String> {
     author_from_epub(&Epub::open(book_epub_path(&app, &id)?).ok()?)
+}
+
+#[tauri::command]
+pub fn set_book_series(app: AppHandle, id: String, series: String) {
+    let Some(dir) = book_dir(&app, &id) else {
+        return;
+    };
+    let mut meta = load_metadata_at(&dir).unwrap();
+    meta.series = (!series.is_empty()).then_some(series);
+    save_metadata(&meta, &dir).ok();
+}
+
+#[tauri::command]
+pub fn load_series(app: AppHandle) -> serde_json::Value {
+    read_json(&books_dir(&app).join(SERIES_FILE)).unwrap_or_else(|| serde_json::json!({}))
+}
+
+#[tauri::command]
+pub fn save_series(app: AppHandle, store: serde_json::Value) -> Result<(), String> {
+    write_json(&books_dir(&app).join(SERIES_FILE), &store)
 }
 
 #[tauri::command]

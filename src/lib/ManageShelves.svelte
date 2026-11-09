@@ -55,6 +55,7 @@
   <div class="modal-box flex flex-col gap-5">
     <h3 class="text-base font-semibold">Manage Shelves</h3>
 
+    <SettingToggle label="Series Shelves" bind:checked={shellConfig.showSeries} onchange={saveShellConfig} />
     <SettingToggle label="Author Shelves" bind:checked={shellConfig.showAuthors} onchange={saveShellConfig} />
     <SettingToggle label="Completed Shelf" bind:checked={shellConfig.showCompleted} onchange={saveShellConfig} />
 
