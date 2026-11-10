@@ -53,7 +53,7 @@ fn thumbnail(bytes: &[u8]) -> windows::core::Result<RandomAccessStreamReference>
     let stream = InMemoryRandomAccessStream::new()?;
     let writer = DataWriter::CreateDataWriter(&stream)?;
     writer.WriteBytes(bytes)?;
-    writer.StoreAsync()?.get()?;
+    writer.StoreAsync()?.join()?;
     writer.DetachStream()?;
     stream.Seek(0)?;
     RandomAccessStreamReference::CreateFromStream(&stream)
