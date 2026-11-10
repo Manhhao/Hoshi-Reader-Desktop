@@ -1201,7 +1201,7 @@
   }
 
   function clearForwardHistory() {
-    if (!backHistory.length) forwardHistory = [];
+    forwardHistory = [];
   }
 
   let highlights = $state<BookHighlight[]>((() => savedHighlights)());
