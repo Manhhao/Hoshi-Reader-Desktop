@@ -39,6 +39,7 @@
     completionDate,
     createShelf,
     isCompleted,
+    isFinished,
     moveBook,
     resetShelfOrder,
     saveShelfOrder,
@@ -511,7 +512,7 @@
         <CircleCheck class="absolute right-1.5 top-1.5 size-[22px] rounded-full bg-blue-500 text-white" />
       {:else if isSelecting}
         <span class="absolute right-1.5 top-1.5 size-[22px] rounded-full border-2 border-white/85 bg-black/25"></span>
-      {:else if book.progress >= 0.999}
+      {:else if isFinished(book)}
         <CircleCheck class="absolute bottom-1.5 right-1.5 size-[22px] rounded-full bg-[#999] text-white" />
       {/if}
     </BookCover>

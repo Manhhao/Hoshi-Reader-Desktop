@@ -80,7 +80,7 @@ export async function moveBook(id: string, name: string | null) {
 }
 
 function isReading(book: BookMetadata) {
-  return book.progress > 0 && book.progress < 0.999;
+  return book.progress > 0 && !isFinished(book);
 }
 
 export function isCompleted(book: BookMetadata) {
