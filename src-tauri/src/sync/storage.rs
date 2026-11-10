@@ -132,15 +132,18 @@ impl SyncStorage {
     }
 
     pub fn has_data() -> bool {
-        Self::book_directories().iter().any(|root| {
-            if is_archived(root) {
-                statistics::load(root)
-                    .values()
-                    .any(|change| change.value.is_some())
-            } else {
-                library::load_metadata_at(root).is_some_and(|metadata| metadata.epub.is_some())
-            }
-        })
+        library::load_shelf_list(app())
+            .values()
+            .any(|shelf| shelf.value.is_some())
+            || Self::book_directories().iter().any(|root| {
+                if is_archived(root) {
+                    statistics::load(root)
+                        .values()
+                        .any(|change| change.value.is_some())
+                } else {
+                    library::load_metadata_at(root).is_some_and(|metadata| metadata.epub.is_some())
+                }
+            })
     }
 
     pub fn remove_deletion_records(&mut self) -> SyncResult<()> {
@@ -183,6 +186,12 @@ impl SyncStorage {
         shelves.retain(|_, shelf| shelf.value.is_some());
         if shelves.len() != count {
             library::save_shelf_list(app(), &shelves)?;
+        }
+        let mut orders = library::load_shelf_orders(app());
+        let count = orders.len();
+        orders.retain(|_, order| order.value.is_some());
+        if orders.len() != count {
+            library::save_shelf_orders(app(), &orders)?;
         }
         self.save()?;
         for root in cleared {
@@ -553,9 +562,13 @@ impl SyncStorage {
 
     pub fn delete_book(&mut self, key: &str) -> SyncResult<()> {
         let root = Self::book_directory(key, false);
-        statistics::archive(app(), &library::load_metadata_at(&root).unwrap())?;
+        if let Some(metadata) = library::load_metadata_at(&root) {
+            statistics::archive(app(), &metadata)?;
+        }
         let archive = Self::book_directory(key, true);
-        let stored = statistics::load(&archive).is_empty();
+        let stored = !statistics::load(&archive)
+            .values()
+            .any(|change| change.value.is_some());
 
         let record = self.state.books.get_mut(key).unwrap();
         if stored && !record.attached && !crate::sync::gdrive::manager::enabled() {

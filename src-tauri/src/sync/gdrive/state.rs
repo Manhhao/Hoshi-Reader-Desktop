@@ -242,6 +242,9 @@ async fn load_layout() -> SyncResult<()> {
             return Err(SyncError::AttachPending);
         }
     }
+    if shared().cache.root.is_empty() {
+        store().remove_deletion_records()?;
+    }
     let mut manager = shared();
     manager.cache.root = layout.root;
     manager.cache.state_folder = layout.state;

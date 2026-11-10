@@ -99,6 +99,7 @@
     missingBooks: 0,
   });
   const failedBooks = $derived(driveStatus.queue.filter((item) => item.error).length);
+  const isChecking = $derived(driveStatus.isSyncing && driveStatus.progress === null);
   const flows = $derived.by(() => {
     const result: { label: string; flow: SyncFlow }[] = [];
     if (driveStatus.progress?.upload) result.push({ label: "Uploading", flow: driveStatus.progress.upload });
@@ -1355,6 +1356,8 @@
                         <span class="text-error">{failedBooks} failed</span>
                       {:else if driveStatus.queue.length > 0}
                         <span class="tabular-nums text-base-content/60">{driveStatus.queue.length}</span>
+                      {:else if isChecking}
+                        <span class="text-base-content/60">Checking</span>
                       {:else}
                         <span class="text-base-content/60">Empty</span>
                       {/if}
@@ -1397,6 +1400,9 @@
                     }}
                   >
                     Sync Now
+                    {#if isChecking}
+                      <span class="loading loading-spinner loading-xs"></span>
+                    {/if}
                   </button>
                   <button
                     class="btn btn-outline btn-sm"
@@ -1848,7 +1854,12 @@
           <div
             class="flex h-12 items-center justify-center rounded-box border border-base-300 text-sm text-base-content/60"
           >
-            All Books Synced
+            {#if isChecking}
+              <span class="loading loading-spinner loading-xs"></span>
+              Checking for Changes
+            {:else}
+              All Books Synced
+            {/if}
           </div>
         {:else}
           <div class="flex min-h-0 flex-col gap-3 overflow-y-auto">

@@ -126,7 +126,6 @@ async fn authorize() -> Result<(), String> {
         ));
     }
     let tokens: TokenResponse = response.json().await.map_err(|e| e.to_string())?;
-    manager::reset_connection(false).map_err(|error| error.to_string())?;
     clear_tokens();
     save_token("accessToken", &tokens.access_token)?;
     let refresh = tokens
@@ -169,8 +168,11 @@ pub async fn refresh_access_token() -> Result<String, GoogleDriveError> {
     client::check_connection(connection)?;
     crate::sync::task::check_cancellation()?;
 
-    if response.status().as_u16() != 200 {
-        clear_tokens();
+    let status = response.status().as_u16();
+    if status != 200 {
+        if status == 400 || status == 401 {
+            clear_tokens();
+        }
         return Err("Failed to refresh token\nPlease sign in again"
             .to_string()
             .into());
