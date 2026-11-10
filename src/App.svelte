@@ -34,6 +34,7 @@
   } from "./lib/dictConfig.svelte";
   import {
     authors,
+    isCompleted,
     loadShelves,
     migrateShelfOrders,
     sameSource,
@@ -56,6 +57,7 @@
     savedHighlights: BookHighlight[];
     bookInfo: BookInfo;
     bookmark: Bookmark | null;
+    completed: boolean;
     skipSyncOnOpen: boolean;
   };
 
@@ -176,6 +178,7 @@
       savedHighlights,
       bookInfo,
       bookmark,
+      completed: isCompleted(book),
       skipSyncOnOpen,
     };
   }

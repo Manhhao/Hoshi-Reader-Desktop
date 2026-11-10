@@ -91,6 +91,7 @@
     savedHighlights,
     bookInfo,
     bookmark,
+    completed,
     skipSyncOnOpen,
     onClose,
   }: {
@@ -103,6 +104,7 @@
     savedHighlights: BookHighlight[];
     bookInfo: BookInfo;
     bookmark: Bookmark | null;
+    completed: boolean;
     skipSyncOnOpen: boolean;
     onClose: () => void;
   } = $props();
@@ -885,7 +887,7 @@
   }
 
   stats.loadSessions();
-  if (statsConfig.statisticsAutostartMode === "On") stats.startTracking();
+  if (statsConfig.statisticsAutostartMode === "On" && !(() => completed)()) stats.startTracking();
 
   (async () => {
     if (syncOnOpen) {
@@ -1563,7 +1565,12 @@
         } else {
           clearForwardHistory();
           stats.flushStats();
-          if (statsConfig.statisticsAutostartMode !== "Off" && !stats.isTracking && !trackingStoppedManually) {
+          if (
+            statsConfig.statisticsAutostartMode !== "Off" &&
+            !completed &&
+            !stats.isTracking &&
+            !trackingStoppedManually
+          ) {
             stats.startTracking();
           }
         }
