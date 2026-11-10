@@ -1579,7 +1579,7 @@
                 </span>
               </div>
               <div class="grid gap-1.5">
-                <label class="text-sm font-medium" for="anki-address">Address</label>
+                <label class="text-sm font-medium" for="anki-address">Server URL</label>
                 <div class="join w-full">
                   <input
                     id="anki-address"
@@ -1604,6 +1604,14 @@
                   onchange={saveAnki}
                 />
               </div>
+
+              {#if ankiReachable}
+                <SettingToggle
+                  label="Force Sync on Adding Card"
+                  bind:checked={anki.forceSync}
+                  onchange={saveAnki}
+                />
+              {/if}
 
               {#if ankiError}
                 <p class="select-text text-sm text-error">{ankiError}</p>
@@ -1774,54 +1782,47 @@
               </div>
             </div>
 
-            <div class="card border border-base-300 bg-base-100">
-              <div class="card-body gap-4">
-                <SettingRow label="Duplicate Behavior">
-                  <select
-                    class="select select-sm w-36"
-                    bind:value={anki.duplicateBehavior}
-                    onchange={saveAnki}
-                  >
-                    {#each Object.entries(duplicateBehaviorLabels) as [value, label] (value)}
-                      <option {value}>{label}</option>
-                    {/each}
-                  </select>
-                </SettingRow>
-                <SettingToggle
-                  label="Disable Show Notes Button"
-                  bind:checked={anki.disableShowNotes}
+            <SettingsSection title="Duplicates">
+              <SettingRow label="Duplicate Scope">
+                <select
+                  class="select select-sm w-36"
+                  bind:value={anki.duplicateScope}
                   onchange={saveAnki}
-                />
-                <SettingRow label="Duplicate Scope">
-                  <select
-                    class="select select-sm w-36"
-                    bind:value={anki.duplicateScope}
-                    onchange={saveAnki}
-                  >
-                    {#each Object.entries(duplicateScopeLabels) as [value, label] (value)}
-                      <option {value}>{label}</option>
-                    {/each}
-                  </select>
-                </SettingRow>
-                <SettingToggle
-                  label="Compact Glossaries"
-                  bind:checked={anki.compactGlossaries}
+                >
+                  {#each Object.entries(duplicateScopeLabels) as [value, label] (value)}
+                    <option {value}>{label}</option>
+                  {/each}
+                </select>
+              </SettingRow>
+              <SettingToggle
+                label="Check All Models"
+                bind:checked={anki.checkAllModels}
+                onchange={saveAnki}
+              />
+              <SettingRow label="Duplicate Behavior">
+                <select
+                  class="select select-sm w-36"
+                  bind:value={anki.duplicateBehavior}
                   onchange={saveAnki}
-                />
-                <SettingToggle
-                  label="Check All Models"
-                  bind:checked={anki.checkAllModels}
-                  onchange={saveAnki}
-                />
-                <SettingToggle
-                  label="Force Sync on adding card"
-                  bind:checked={anki.forceSync}
-                  onchange={saveAnki}
-                />
-              </div>
-            </div>
+                >
+                  {#each Object.entries(duplicateBehaviorLabels) as [value, label] (value)}
+                    <option {value}>{label}</option>
+                  {/each}
+                </select>
+              </SettingRow>
+              <SettingToggle
+                label="Disable Show Notes Button"
+                bind:checked={anki.disableShowNotes}
+                onchange={saveAnki}
+              />
+            </SettingsSection>
 
             <SettingsSection title="Advanced">
+              <SettingToggle
+                label="Compact Glossaries"
+                bind:checked={anki.compactGlossaries}
+                onchange={saveAnki}
+              />
               <SettingToggle
                 label="Show All Handlebars"
                 bind:checked={anki.showAllHandlebars}
