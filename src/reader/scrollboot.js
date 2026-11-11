@@ -167,7 +167,7 @@
                 box-sizing: border-box !important;
                 ${scrollCss}
                 overflow-anchor: none !important;
-                transform: translate(0) !important;
+                ${chromium ? '' : 'transform: translate(0) !important;'}
                 scrollbar-width: none !important;
             }
             body::-webkit-scrollbar {
@@ -203,7 +203,7 @@
             svg.blurred {
                 filter: blur(24px) !important;
                 clip-path: inset(0);
-                transform: translateZ(0);
+                ${chromium ? '' : 'transform: translateZ(0);'}
             }
             img.block-img.blurred,
             svg.blurred image {
