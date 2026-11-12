@@ -175,7 +175,7 @@
         style:inset="{depth}px {depth}px {depth}px {minX}px"
         style:box-shadow="0 {4 * shadow}px {8 * shadow}px {depth}px rgba(0, 0, 0, 0.3)"
       ></div>
-      <svg class="pointer-events-none absolute inset-0" width={width} height={coverHeight + depth} aria-hidden="true">
+      <svg class="pointer-events-none absolute inset-0" width={width} height={coverHeight + depth}>
         <defs>
           <linearGradient id="{uid}-bottom" gradientUnits="userSpaceOnUse" x1={minX} y1="0" x2={width} y2="0">
             <stop offset="0.94" stop-color={gray(0.88, 0.46)} />

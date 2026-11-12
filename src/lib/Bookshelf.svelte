@@ -575,7 +575,7 @@
 {/snippet}
 
 {#snippet characterTotal()}
-  <span title="{formatNumber(shelfCharacters.read)} / {formatNumber(shelfCharacters.total)} characters read">
+  <span>
     {formatNumber(shelfCharacters.read)} / {formatNumber(shelfCharacters.total)}<span class="hidden @2xl:inline">{" "}characters</span>
   </span>
 {/snippet}

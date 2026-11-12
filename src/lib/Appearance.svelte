@@ -144,12 +144,11 @@
             <option value={index}>{theme.name}</option>
           {/each}
         </select>
-        <button class="btn btn-sm btn-square" aria-label="Add custom theme" onclick={openThemeDialog}>
+        <button class="btn btn-sm btn-square" onclick={openThemeDialog}>
           <Plus class="size-4" />
         </button>
         <button
           class="btn btn-ghost btn-sm btn-square text-base-content/60 hover:text-error"
-          aria-label="Delete custom theme"
           disabled={readerConfig.customThemes.length === 1}
           onclick={deleteCustomTheme}
         >

@@ -245,9 +245,8 @@
       />
     </label>
     <button
-      class="btn btn-sm btn-square {dictConfig.clipboardMonitor ? 'btn-neutral' : 'btn-ghost'}"
+      class="btn btn-sm btn-square {dictConfig.clipboardMonitor ? 'btn-neutral btn-active' : 'btn-ghost'}"
       title="Clipboard Monitor"
-      aria-pressed={dictConfig.clipboardMonitor}
       onclick={() => {
         dictConfig.clipboardMonitor = !dictConfig.clipboardMonitor;
         saveDictConfig();
