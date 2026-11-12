@@ -233,6 +233,19 @@
     await menu.popup();
   }
 
+  async function showShelfMenu(name: string, e: MouseEvent) {
+    e.preventDefault();
+    const menu = await Menu.new({
+      items: [
+        { id: `rename-shelf-${name}`, text: "Rename", action: () => manageShelves?.openRename(name) },
+        { id: `hide-shelf-${name}`, text: "Hide", action: () => manageShelves?.setHidden(name, true) },
+        { item: "Separator" },
+        { id: `delete-shelf-${name}`, text: "Delete", action: () => manageShelves?.removeShelf(name) },
+      ],
+    });
+    await menu.popup();
+  }
+
   function saveSeriesName() {
     if (renameSeriesKey !== null) renameSeries(renameSeriesKey, renameSeriesText.trim());
     renameSeriesDialog?.close();
@@ -325,7 +338,12 @@
             {#if visibleShelves.length > 0}
               <li class="menu-title text-[11px] font-medium uppercase tracking-wider">Shelves</li>
               {#each visibleShelves as shelf (shelf.name)}
-                {@render sourceRow({ kind: "shelf", name: shelf.name }, shelf.name, shelf.count)}
+                {@render sourceRow(
+                  { kind: "shelf", name: shelf.name },
+                  shelf.name,
+                  shelf.count,
+                  (e) => showShelfMenu(shelf.name, e),
+                )}
               {/each}
             {/if}
             {#if bookSeries.length > 0}

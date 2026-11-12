@@ -20,19 +20,19 @@
 
   const sort = new Sortable({ list: () => shelves.list, commit: moveShelves });
 
-  async function removeShelf(name: string) {
+  export async function removeShelf(name: string) {
     if (!(await ask(`Delete "${name}"?`, { kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" }))) return;
     await deleteShelf(name);
     setHidden(name, false);
   }
 
-  function setHidden(name: string, hidden: boolean) {
+  export function setHidden(name: string, hidden: boolean) {
     const rest = shellConfig.hiddenShelves.filter((shelf) => shelf !== name);
     shellConfig.hiddenShelves = hidden ? [...rest, name] : rest;
     saveShellConfig();
   }
 
-  function openRename(name: string) {
+  export function openRename(name: string) {
     renameName = name;
     renameText = name;
     renameDialog?.showModal();
