@@ -335,7 +335,11 @@
     completionDay = dayKey(date ?? new Date());
     completionUnknown = completionEditing && date === null;
     completionRemove = false;
-    completionSize = book?.epub ? await invoke<number | null>("book_epub_size", { id: book.id }) : null;
+    const sizes = await Promise.all(
+      books.filter((book) => book.epub).map((book) => invoke<number | null>("book_epub_size", { id: book.id })),
+    );
+    const known = sizes.filter((size) => size !== null);
+    completionSize = known.length > 0 ? known.reduce((total, size) => total + size, 0) : null;
     completionDialog?.showModal();
   }
 
@@ -347,7 +351,7 @@
       for (const book of completionBooks) {
         if (completionEditing) await invoke("set_book_completed", { id: book.id, completed });
         else await invoke("mark_book_read", { id: book.id, completed });
-        if (completionRemove) await invoke("remove_book_epub", { id: book.id });
+        if (completionRemove && book.epub) await invoke("remove_book_epub", { id: book.id });
       }
     } catch (e) {
       toast?.show(String(e), "error");
@@ -866,7 +870,7 @@
 
       {#if completionSize !== null}
         <div class="flex flex-col gap-1">
-          <SettingToggle label="Delete EPUB" bind:checked={completionRemove} onchange={() => {}} />
+          <SettingToggle label={completionBooks.length === 1 ? "Delete EPUB" : "Delete EPUBs"} bind:checked={completionRemove} onchange={() => {}} />
           <span class="text-xs text-base-content/60">
             Frees {formatSize(completionSize)} on this device{syncConfig.enableSync ? " and on Google Drive" : ""}.
           </span>
