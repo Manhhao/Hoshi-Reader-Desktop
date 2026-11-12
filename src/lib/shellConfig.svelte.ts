@@ -5,6 +5,7 @@ export type ShellConfig = {
   showSeries: boolean;
   showAuthors: boolean;
   showCompleted: boolean;
+  hiddenShelves: string[];
   bookshelfCoverMode: "Show" | "Blur" | "Hide";
   bookshelfLayout: "Grid" | "List";
   bookshelfShowProgressBar: boolean;
@@ -19,6 +20,7 @@ const defaults: ShellConfig = {
   showSeries: false,
   showAuthors: true,
   showCompleted: true,
+  hiddenShelves: [],
   bookshelfCoverMode: "Show",
   bookshelfLayout: "Grid",
   bookshelfShowProgressBar: true,

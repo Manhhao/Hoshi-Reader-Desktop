@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { Menu, Pencil, Plus, Trash2 } from "@lucide/svelte";
+  import { Eye, EyeOff, Menu, Pencil, Plus, Trash2 } from "@lucide/svelte";
   import SettingToggle from "./SettingToggle.svelte";
   import { shellConfig, saveShellConfig } from "./shellConfig.svelte";
   import { createShelf, deleteShelf, moveShelves, renameShelf, shelves } from "./shelves.svelte";
@@ -23,6 +23,13 @@
   async function removeShelf(name: string) {
     if (!(await ask(`Delete "${name}"?`, { kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" }))) return;
     await deleteShelf(name);
+    setHidden(name, false);
+  }
+
+  function setHidden(name: string, hidden: boolean) {
+    const rest = shellConfig.hiddenShelves.filter((shelf) => shelf !== name);
+    shellConfig.hiddenShelves = hidden ? [...rest, name] : rest;
+    saveShellConfig();
   }
 
   function openRename(name: string) {
@@ -36,6 +43,8 @@
     const newName = renamedName;
     renameDialog?.close();
     await renameShelf(renameName, newName);
+    shellConfig.hiddenShelves = shellConfig.hiddenShelves.map((shelf) => (shelf === renameName ? newName : shelf));
+    saveShellConfig();
     onRename(renameName, newName);
   }
 
@@ -70,9 +79,20 @@
       {:else}
         <ul class="list rounded-box border border-base-300" use:sort.container>
           {#each shelves.list as shelf, index (shelf.name)}
+            {@const hidden = shellConfig.hiddenShelves.includes(shelf.name)}
             <li class="list-row items-center {sort.index === index ? 'opacity-50' : ''}">
-              <p class="list-col-grow truncate text-sm">{shelf.name}</p>
+              <p class="list-col-grow truncate text-sm {hidden ? 'text-base-content/50' : ''}">{shelf.name}</p>
               <span class="text-xs tabular-nums text-base-content/50">{shelf.bookIds.length}</span>
+              <button
+                class="btn btn-ghost btn-xs btn-square text-base-content/50"
+                onclick={() => setHidden(shelf.name, !hidden)}
+              >
+                {#if hidden}
+                  <EyeOff class="size-4" />
+                {:else}
+                  <Eye class="size-4" />
+                {/if}
+              </button>
               <button
                 class="btn btn-ghost btn-xs btn-square text-base-content/50"
                 onclick={() => openRename(shelf.name)}
