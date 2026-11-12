@@ -173,7 +173,7 @@
       <svg class="pointer-events-none absolute inset-0 overflow-visible" width={width} height={coverHeight + depth} aria-hidden="true">
         <defs>
           <filter id="{uid}-shadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy={4 * shadow} stdDeviation={4 * shadow} flood-color="#000" flood-opacity="0.4" />
+            <feDropShadow dx="0" dy={4 * shadow} stdDeviation={4 * shadow} flood-color="#000" flood-opacity="0.3" />
           </filter>
           <linearGradient id="{uid}-bottom" gradientUnits="userSpaceOnUse" x1={minX} y1="0" x2={width} y2="0">
             <stop offset="0.94" stop-color={gray(0.88, 0.46)} />

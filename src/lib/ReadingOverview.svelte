@@ -8,7 +8,7 @@
   import { relativeDate } from "./relativeDate";
   import { schemeUrl } from "./scheme";
   import { statsConfig } from "./statsConfig.svelte";
-  import { formatUnits, readingSpeed, StatisticsModel } from "./statsModel.svelte";
+  import { formatNumber, formatUnits, readingSpeed, StatisticsModel } from "./statsModel.svelte";
   import type { BookDocument, BookInfo, Bookmark, BookMetadata } from "./types";
 
   let {
@@ -167,10 +167,17 @@
                 {/if}
               </span>
               <span class="col-start-2 row-start-2 flex flex-wrap items-end gap-x-6 gap-y-2 pb-4 tabular-nums @xl/reading:col-start-3 @xl/reading:row-start-1 @xl/reading:flex-col @xl/reading:justify-between @xl/reading:pt-1 @xl/reading:text-right">
-                {#if remaining}
-                  <span class="text-sm font-medium">{remaining}</span>
+                {#if remaining || book.charactersTotal > 0}
+                  <span class="flex flex-col gap-1">
+                    {#if remaining}
+                      <span class="text-sm font-medium">{remaining}</span>
+                    {/if}
+                    {#if book.charactersTotal > 0}
+                      <span class="text-xs text-base-content/60">{formatNumber(book.charactersRead)} / {formatNumber(book.charactersTotal)}</span>
+                    {/if}
+                  </span>
                 {/if}
-                <span class="flex flex-col gap-1 text-xs text-base-content/60 {remaining ? '' : '@xl/reading:mt-auto'}">
+                <span class="flex flex-col gap-1 text-xs text-base-content/60 {remaining || book.charactersTotal > 0 ? '' : '@xl/reading:mt-auto'}">
                   <span class="text-[11px]">Last read</span>
                   <span>{relativeDate(book.lastAccess)}</span>
                 </span>

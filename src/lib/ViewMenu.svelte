@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ALargeSmall, ArrowDown, ArrowUp, Clock, GripVertical, Hourglass, Percent, SlidersHorizontal } from "@lucide/svelte";
+  import { ALargeSmall, ArrowDown, ArrowUp, Check, Clock, GripVertical, Hourglass, Percent, SlidersHorizontal, UserPen } from "@lucide/svelte";
+  import MojiIcon from "./MojiIcon.svelte";
   import { saveShellConfig, shellConfig } from "./shellConfig.svelte";
   import type { SortOption } from "./types";
 
@@ -13,8 +14,18 @@
   const options = [
     ["Recent", Clock],
     ["Title", ALargeSmall],
+    ["Author", UserPen],
     ["Progress", Percent],
     ["Time Read", Hourglass],
+    ["Characters", MojiIcon],
+  ] as const;
+
+  const shown = [
+    ["Progress Bar", "bookshelfShowProgressBar"],
+    ["Percentage", "bookshelfShowPercentage"],
+    ["Characters", "bookshelfShowCharacters"],
+    ["Title", "bookshelfShowTitle"],
+    ["Author", "bookshelfShowAuthor"],
   ] as const;
 
   let open = $state(false);
@@ -59,7 +70,7 @@
               <Icon class="size-4" />
               {value}
               {#if option === value}
-                {#if (value === "Title") !== reversed}
+                {#if (value === "Title" || value === "Author") !== reversed}
                   <ArrowUp class="ml-auto size-3.5" />
                 {:else}
                   <ArrowDown class="ml-auto size-3.5" />
@@ -94,6 +105,26 @@
           </button>
         {/each}
       </div>
+      {#if shellConfig.bookshelfLayout === "Grid"}
+        <ul class="menu w-full p-0">
+          <li class="menu-title">Show</li>
+          {#each shown as [label, key] (key)}
+            <li>
+              <button
+                onclick={() => {
+                  shellConfig[key] = !shellConfig[key];
+                  saveShellConfig();
+                }}
+              >
+                {label}
+                {#if shellConfig[key]}
+                  <Check class="ml-auto size-3.5" />
+                {/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <ul class="menu w-full p-0">
         <li class="menu-title">Covers</li>
       </ul>

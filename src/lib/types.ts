@@ -22,7 +22,7 @@ export type Timestamped<T> = {
   value: T;
 };
 
-export type SortOption = "Recent" | "Title" | "Progress" | "Time Read" | "Custom";
+export type SortOption = "Recent" | "Title" | "Author" | "Progress" | "Time Read" | "Characters" | "Custom";
 
 export type SelectionRect = { x: number; y: number; width: number; height: number };
 

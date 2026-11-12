@@ -7,6 +7,11 @@ export type ShellConfig = {
   showCompleted: boolean;
   bookshelfCoverMode: "Show" | "Blur" | "Hide";
   bookshelfLayout: "Grid" | "List";
+  bookshelfShowProgressBar: boolean;
+  bookshelfShowPercentage: boolean;
+  bookshelfShowCharacters: boolean;
+  bookshelfShowTitle: boolean;
+  bookshelfShowAuthor: boolean;
 };
 
 const defaults: ShellConfig = {
@@ -16,6 +21,11 @@ const defaults: ShellConfig = {
   showCompleted: true,
   bookshelfCoverMode: "Show",
   bookshelfLayout: "Grid",
+  bookshelfShowProgressBar: true,
+  bookshelfShowPercentage: true,
+  bookshelfShowCharacters: false,
+  bookshelfShowTitle: true,
+  bookshelfShowAuthor: false,
 };
 
 const store = persisted<ShellConfig>("shell.config", defaults);
