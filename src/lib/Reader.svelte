@@ -1627,15 +1627,10 @@
       openReaderPanel(null);
       return true;
     }
-    if (showBar) {
-      showBar = false;
-      return true;
-    }
-    if (fullscreen) {
-      toggleFullscreen();
-      return true;
-    }
-    return false;
+    if (!showBar) showBar = true;
+    else if (fullscreen) toggleFullscreen();
+    else showBar = false;
+    return true;
   }
 
   function onKey(e: KeyboardEvent) {
