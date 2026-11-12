@@ -285,25 +285,27 @@
   }
 
   async function deleteSelected() {
-    if (!(await ask(`Delete ${selectedIds.length} book(s)?`, { kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" }))) return;
-    for (const id of selectedIds) await onDelete(id);
-    clearSelection();
+    if (await deleteBooks(selectedBooks, `Delete ${selectedBooks.length} book(s)?`)) clearSelection();
   }
 
-  async function deleteBook(book: BookMetadata) {
-    const text = `Delete "${displayTitle(book)}"?`;
-    if (syncConfig.enableSync && book.epub && (await invoke<boolean>("gdrive_published_epub", { id: book.id }))) {
-      const result = await message(text, {
+  async function deleteBooks(books: BookMetadata[], text: string) {
+    const published = syncConfig.enableSync
+      ? await Promise.all(books.map((book) => !!book.epub && invoke<boolean>("gdrive_published_epub", { id: book.id })))
+      : [];
+    const local = books.filter((_, index) => published[index]);
+    let choice: string | null = null;
+    if (local.length > 0) {
+      choice = await message(text, {
         kind: "warning",
         buttons: { yes: "Delete Local", no: "Delete Everywhere", cancel: "Cancel" },
       });
-      if (result === "Delete Local") await onDeleteLocal(book.id);
-      if (result === "Delete Everywhere") await onDelete(book.id);
-      return;
+    } else if (await ask(text, { kind: "warning", okLabel: syncConfig.enableSync ? "Delete Everywhere" : "Delete", cancelLabel: "Cancel" })) {
+      choice = "Delete Everywhere";
     }
-    const okLabel = syncConfig.enableSync ? "Delete Everywhere" : "Delete";
-    if (!(await ask(text, { kind: "warning", okLabel, cancelLabel: "Cancel" }))) return;
-    await onDelete(book.id);
+    if (choice === "Delete Local") for (const book of local) await onDeleteLocal(book.id);
+    else if (choice === "Delete Everywhere") for (const book of books) await onDelete(book.id);
+    else return false;
+    return true;
   }
 
   let completionDialog = $state<HTMLDialogElement>();
@@ -463,7 +465,7 @@
       ...(shellConfig.showSeries
         ? [{ id: `series-${book.id}`, text: "Edit Series", action: () => openEditSeries(book) }]
         : []),
-      { id: `delete-${book.id}`, text: "Delete", action: () => deleteBook(book) },
+      { id: `delete-${book.id}`, text: "Delete", action: () => deleteBooks([book], `Delete "${displayTitle(book)}"?`) },
     ]);
   }
 
