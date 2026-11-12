@@ -4,7 +4,7 @@
   import Popup from "./Popup.svelte";
   import PageHeader from "./PageHeader.svelte";
   import { dictConfig, saveDictConfig } from "./dictConfig.svelte";
-  import { hotkeyConfig } from "./hotkeyConfig.svelte";
+  import { hotkeyConfig, normalizeHotkey } from "./hotkeyConfig.svelte";
   import { readerConfig } from "./readerConfig.svelte";
   import { calculatePopupLayout, type PopupPlacement } from "./popupLayout";
   import { cursorExitHider } from "./popupHover";
@@ -38,6 +38,8 @@
   let importedFonts = $state<FontInfo[]>([]);
   let clozeOffset = $state<number | null>(null);
   let paneEl = $state<HTMLDivElement | null>(null);
+  let paneView = $state<Popup>();
+  let popupViews = $state<Popup[]>([]);
   let lookupSeq = 0;
   const hider = cursorExitHider(closePopups);
 
@@ -192,6 +194,35 @@
     };
   });
 
+  const popupHotkeys = $derived(
+    [hotkeyConfig.mineEntry1, hotkeyConfig.mineEntry2, hotkeyConfig.mineEntry3, hotkeyConfig.playEntryAudio].filter(Boolean),
+  );
+
+  function onPopupHotkey(key: string) {
+    const view = popups.length ? popupViews[popups.length - 1] : paneView;
+    if (key === hotkeyConfig.mineEntry1) view?.entryAction("mine", 0);
+    else if (key === hotkeyConfig.mineEntry2) view?.entryAction("mine", 1);
+    else if (key === hotkeyConfig.mineEntry3) view?.entryAction("mine", 2);
+    else if (key === hotkeyConfig.playEntryAudio) view?.entryAction("audio");
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey || document.querySelector("dialog[open]")) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, select, [contenteditable]")) return;
+    const key = normalizeHotkey(e.key);
+    const control = target.closest("button, a, [role='button'], summary");
+    if (!popupHotkeys.includes(key) || (control && [" ", "Enter", "Tab"].includes(e.key))) return;
+    e.preventDefault();
+    if (!e.repeat) onPopupHotkey(key);
+  }
+
+  $effect(() => {
+    if (!active) return;
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   invoke<FontInfo[]>("list_fonts").then((fonts) => (importedFonts = fonts));
 </script>
 
@@ -228,6 +259,7 @@
 
   <div class="min-h-0 flex-1" bind:this={paneEl}>
     <Popup
+      bind:this={paneView}
       {entries}
       {styles}
       fonts={importedFonts}
@@ -238,6 +270,8 @@
       scanModifier={hotkeyConfig.scanModifier}
       scanDelay={hotkeyConfig.scanDelay}
       clickLookup={hotkeyConfig.clickLookup}
+      readerHotkeys={popupHotkeys}
+      onReaderHotkey={onPopupHotkey}
       disableTransparency
       fill
       hasChild={popups.length > 0}
@@ -258,6 +292,7 @@
 
 {#each popups as popup, i (popup.id)}
   <Popup
+    bind:this={popupViews[i]}
     entries={popup.entries}
     styles={popup.styles}
     fonts={importedFonts}
@@ -268,6 +303,8 @@
     scanModifier={hotkeyConfig.scanModifier}
     scanDelay={hotkeyConfig.scanDelay}
     clickLookup={hotkeyConfig.clickLookup}
+    readerHotkeys={popupHotkeys}
+    onReaderHotkey={onPopupHotkey}
     disableTransparency={readerConfig.popupDisableTransparency}
     hasChild={i < popups.length - 1}
     placement={popup.placement}
