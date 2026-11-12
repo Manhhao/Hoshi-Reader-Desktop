@@ -151,7 +151,7 @@
 {#snippet image()}
   <div class="h-full w-full overflow-hidden [container-type:inline-size]">
     {#if src && shellConfig.bookshelfCoverMode !== "Hide"}
-      <img {src} alt="" class="h-full w-full object-cover" style:filter={shellConfig.bookshelfCoverMode === "Blur" ? "blur(5cqw)" : ""} />
+      <img {src} alt="" decoding="async" class="h-full w-full object-cover" style:filter={shellConfig.bookshelfCoverMode === "Blur" ? "blur(5cqw)" : ""} />
     {:else}
       <div class="flex h-full flex-col gap-[8cqw] px-[8cqw] pb-[8cqw] pt-[13.333cqw] text-center text-white" style:background={gradient}>
         <span class="line-clamp-5 text-[10cqw] font-semibold leading-snug">{title}</span>
@@ -170,17 +170,19 @@
     bind:clientWidth={width}
   >
     {#if block}
-      <svg class="pointer-events-none absolute inset-0 overflow-visible" width={width} height={coverHeight + depth} aria-hidden="true">
+      <div
+        class="pointer-events-none absolute rounded-[2px]"
+        style:inset="{depth}px {depth}px {depth}px {minX}px"
+        style:box-shadow="0 {4 * shadow}px {8 * shadow}px {depth}px rgba(0, 0, 0, 0.3)"
+      ></div>
+      <svg class="pointer-events-none absolute inset-0" width={width} height={coverHeight + depth} aria-hidden="true">
         <defs>
-          <filter id="{uid}-shadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy={4 * shadow} stdDeviation={4 * shadow} flood-color="#000" flood-opacity="0.3" />
-          </filter>
           <linearGradient id="{uid}-bottom" gradientUnits="userSpaceOnUse" x1={minX} y1="0" x2={width} y2="0">
             <stop offset="0.94" stop-color={gray(0.88, 0.46)} />
             <stop offset="1" stop-color={gray(0.72, 0.32)} />
           </linearGradient>
         </defs>
-        <path d={block.silhouette} fill={gray(0.8, 0.26)} filter="url(#{uid}-shadow)" />
+        <path d={block.silhouette} fill={gray(0.8, 0.26)} />
         <path d={block.side} fill={gray(0.94, 0.6)} />
         <path d={block.bottom} fill="url(#{uid}-bottom)" />
         <path d={block.lines} fill="none" stroke="rgba(0, 0, 0, 0.16)" stroke-width={block.pixel} />
