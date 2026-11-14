@@ -466,9 +466,11 @@ fn title_from_epub(epub: &Epub, epub_name: &str) -> String {
 }
 
 fn author_from_epub(epub: &Epub) -> Option<String> {
-    epub.metadata()
+    let metadata = epub.metadata();
+    metadata
         .creators()
-        .next()
+        .find(|creator| creator.roles().any(|role| role.code() == "aut"))
+        .or_else(|| metadata.creators().next())
         .map(|creator| creator.value().trim().to_string())
         .filter(|author| !author.is_empty())
 }
