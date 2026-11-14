@@ -133,7 +133,7 @@
   {/if}
 {/snippet}
 
-<div class="min-h-0 flex-1 overflow-y-auto">
+<div class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
   <div class="@container flex flex-col gap-6 p-5">
     <h1 class="text-xl font-semibold">Home</h1>
 

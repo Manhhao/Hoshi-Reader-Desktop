@@ -741,7 +741,7 @@
       </table>
     </div>
   {:else}
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
       <div
         class="grid content-start gap-5 p-5"
         style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));"
