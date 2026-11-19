@@ -344,6 +344,7 @@ pub fn remove_book_epub(app: AppHandle, id: String) -> Result<(), String> {
     let archived_cover = dir.join(ARCHIVED_COVER);
     let mut cover_changed = false;
     if let Some(cover) = cover_url(&app, &metadata)
+        && cover != archived_cover
         && write_thumbnail(&cover, &archived_cover, 720)
     {
         if cover.starts_with(&dir) {

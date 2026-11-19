@@ -384,16 +384,16 @@
         invoke<Bookmark | null>("load_bookmark", { id: book.id }),
         invoke<Sessions>("load_statistics", { folder: book.folder }),
       ]);
-      return isCompleted(book) ||
+      return !book.epubRemoved && (isCompleted(book) ||
         (bookmark !== null && (bookmark.chapterIndex > 0 || bookmark.progress > 0 || bookmark.characterCount > 0)) ||
-        Object.values(sessions).some((session) => session.value !== null);
+        Object.values(sessions).some((session) => session.value !== null));
     }));
     const unread = books.filter((_, index) => canMarkUnread[index]);
     const unreadItem = { id: "mark-unread", text: "Unread", enabled: unread.length > 0, action: () => markUnread(unread) };
     if (books.length === 1 && isCompleted(books[0])) {
       return [{ id: "completion-date", text: "Completion Date…", action: () => openCompletion(books) }, unreadItem];
     }
-    const read = books.filter((book) => !isCompleted(book) && (book.hasBookInfo || (book.characterCount ?? 0) > 0));
+    const read = books.filter((book) => !book.epubRemoved && !isCompleted(book) && (book.hasBookInfo || (book.characterCount ?? 0) > 0));
     return [{ id: "mark-read", text: "Read…", enabled: read.length > 0, action: () => openCompletion(read) }, unreadItem];
   }
 
