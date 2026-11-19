@@ -85,9 +85,10 @@
     const overlap = vertical && !chromium ? fontSize : 0;
     const spread = spreadGap > 0;
     const pages = spread ? 2 : 1;
-    const gap = spread ? `${spreadGap}px` : `${paddingX}vw`;
-    const side = spread ? `${spreadGap / 2}px` : `${paddingX / 2}vw`;
-    const pageWidth = spread ? `calc(50vw - ${spreadGap}px)` : `${100 - paddingX}vw`;
+    const sideWidth = spread ? spreadGap / 2 : Math.round((paddingX / 200) * window.innerWidth);
+    const gap = `${sideWidth * 2}px`;
+    const side = `${sideWidth}px`;
+    const pageWidth = spread ? `calc(50vw - ${gap})` : `calc(100vw - ${gap})`;
     const imgWidth = `calc(${pageWidth} - 1px)`;
     const half = `calc(50vw + ${side})`;
     const imgHeight = vertical
@@ -489,7 +490,7 @@
     if (r.pageWidth === lastPageWidth && r.pageHeight === lastPageHeight) return;
     lastPageWidth = r.pageWidth;
     lastPageHeight = r.pageHeight;
-    if (maxWidth || maxHeight) applyStyle();
+    applyStyle();
     layoutParagraphs();
     if (!restored) return;
     if (!resizeAnchor) resizeAnchor = nodeAtProgress(position);

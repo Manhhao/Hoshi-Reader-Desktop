@@ -73,8 +73,11 @@ window.hoshiParagraph = {
         ? document.body.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
         : document.body.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
         const offsets = paragraphs.map(p => {
-            const rect = p.getBoundingClientRect();
-            return (available - (vertical ? rect.width : rect.height)) / 2;
+            let size = 0;
+            for (const rect of p.getClientRects()) {
+                size += vertical ? rect.width : rect.height;
+            }
+            return (available - size) / 2;
         });
         paragraphs.forEach((p, i) => {
             if (offsets[i] > 0) {
