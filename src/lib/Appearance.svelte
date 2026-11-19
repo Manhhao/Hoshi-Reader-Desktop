@@ -279,6 +279,12 @@
       />
     {/if}
     <SettingToggle
+      label="Center Text"
+      {compact}
+      bind:checked={readerConfig.paragraphCenterText}
+      onchange={() => save(onRestyle)}
+    />
+    <SettingToggle
       label="Animation"
       {compact}
       bind:checked={readerConfig.textAnimation}

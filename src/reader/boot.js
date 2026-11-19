@@ -20,6 +20,7 @@
   const paragraphMode = params.get("pm") === "1";
   const maxSentencesPerPage = Number(params.get("spp"));
   const splitDialogue = params.get("sd") === "1";
+  let centerText = params.get("ct") === "1";
   const pagesRun = params.get("pages");
   const imageSecond = params.get("is2") === "1";
   const pairSrc = params.get("pair");
@@ -267,6 +268,7 @@
         margin-block-start: 0 !important;
         break-before: column !important;
         -webkit-column-break-before: always !important;
+        ${centerText ? "inline-size: fit-content !important; margin-inline: auto !important;" : ""}
       }
       p.hoshi-sentence { text-indent: 0 !important; }
       ::highlight(hoshi-animation) { color: transparent !important; }`
@@ -520,6 +522,7 @@
     lineHeight = m.lh;
     charSpacing = m.cs;
     paraSpacing = m.ps;
+    centerText = m.ct;
     spreadGap = m.sp;
     applyStyle();
     syncPageSize();

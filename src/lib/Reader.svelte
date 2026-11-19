@@ -266,7 +266,7 @@
       `&adv=${readerConfig.layoutAdvanced ? 1 : 0}&lh=${readerConfig.lineHeight}` +
       `&cs=${readerConfig.characterSpacing}&ps=${readerConfig.paragraphSpacing}` +
       `&fm=${readerConfig.furiganaMode}&bi=${readerConfig.blurImages ? 1 : 0}` +
-      `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.maxSentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}` +
+      `&pm=${readerConfig.paragraphMode ? 1 : 0}&spp=${readerConfig.maxSentencesPerPage}&sd=${readerConfig.splitDialogue ? 1 : 0}&ct=${readerConfig.paragraphCenterText ? 1 : 0}` +
       `&font=${encodeURIComponent(readerConfig.selectedFont)}` +
       `&ffile=${encodeURIComponent(readerConfig.selectedFontFile)}&sp=${spread ? spreadGap : 0}`
     );
@@ -1758,6 +1758,7 @@
       lh: readerConfig.lineHeight,
       cs: readerConfig.characterSpacing,
       ps: readerConfig.paragraphSpacing,
+      ct: readerConfig.paragraphCenterText,
       sp: spread ? spreadGap : 0,
     });
   }
