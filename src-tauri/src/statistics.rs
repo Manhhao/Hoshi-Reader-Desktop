@@ -181,7 +181,7 @@ pub fn archive(app: &AppHandle, book: &BookMetadata) -> Result<(), String> {
         return Ok(());
     };
     let destination = archived_book_directory(app, &book.folder)
-        .unwrap_or_else(|| archive_directory(app).join(&book.folder));
+        .unwrap_or_else(|| library::folder_path(&archive_directory(app), &book.folder));
 
     let sessions = SyncBook::merge_records(&load(&root), &load(&destination));
     fs::create_dir_all(&destination).map_err(|error| error.to_string())?;
@@ -236,7 +236,7 @@ fn write_archived_cover(app: &AppHandle, book: &BookMetadata, directory: &Path) 
     }
     Some(format!(
         "Books/{STATISTICS_ARCHIVE}/{}/{STATISTICS_COVER}",
-        book.folder
+        directory.file_name()?.to_string_lossy()
     ))
 }
 
@@ -245,11 +245,14 @@ pub fn archive_directory(app: &AppHandle) -> PathBuf {
 }
 
 fn book_directory(app: &AppHandle, folder: &str) -> Option<PathBuf> {
-    library::find_path(&library::books_dir(app), folder)
+    library::find_path(
+        &library::books_dir(app),
+        &library::local_folder_name(folder),
+    )
 }
 
 fn archived_book_directory(app: &AppHandle, folder: &str) -> Option<PathBuf> {
-    library::find_path(&archive_directory(app), folder)
+    library::find_path(&archive_directory(app), &library::local_folder_name(folder))
 }
 
 #[derive(Serialize)]
@@ -316,11 +319,10 @@ pub fn load_archived(app: &AppHandle, reset_time: i64) -> Vec<BookStatistics> {
 
 #[tauri::command(async)]
 pub fn load_all_statistics(app: AppHandle, reset_time: i64) -> Vec<BookStatistics> {
-    let books_directory = library::books_dir(&app);
     let mut books: Vec<BookStatistics> = library::load_all_books(&app)
         .iter()
         .filter_map(|book| {
-            let root = library::find_path(&books_directory, &book.folder)?;
+            let root = book_directory(&app, &book.folder)?;
             book_statistics(book, &root, false, reset_time)
         })
         .collect();
@@ -408,6 +410,6 @@ pub fn clear_statistics_archive(app: AppHandle) {
     };
     for url in contents.filter_map(Result::ok).map(|entry| entry.path()) {
         let ids: Vec<String> = load(&url).into_keys().collect();
-        delete(&app, &ids, &url.file_name().unwrap().to_string_lossy());
+        delete(&app, &ids, &library::folder_key(&url));
     }
 }

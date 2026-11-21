@@ -153,7 +153,7 @@ impl SyncStorage {
             let count = sessions.len();
             sessions.retain(|_, change| change.value.is_some());
             if is_archived(&root) && sessions.is_empty() {
-                let key: String = root.file_name().unwrap().to_string_lossy().nfc().collect();
+                let key = library::folder_key(&root);
                 self.state.books.remove(&key);
                 cleared.push(root);
                 continue;
@@ -219,7 +219,7 @@ impl SyncStorage {
     }
 
     pub fn prepare_book(&mut self, root: &Path) {
-        let key: String = root.file_name().unwrap().to_string_lossy().nfc().collect();
+        let key = library::folder_key(root);
         if self.state.books.contains_key(&key) {
             return;
         }
@@ -293,10 +293,9 @@ impl SyncStorage {
         let old_record = self.state.books.get(key).cloned();
         let book_url = Self::book_directory(key, false);
         let existing = library::load_metadata_at(&book_url);
-        let folder = existing.as_ref().map_or_else(
-            || book_url.file_name().unwrap().to_string_lossy().into_owned(),
-            |existing| existing.folder.clone(),
-        );
+        let folder = existing
+            .as_ref()
+            .map_or_else(|| key.to_string(), |existing| existing.folder.clone());
         let mut books_changed = existing.is_some()
             && (book.deleted
                 || old_record.as_ref().map(|record| record.generation) != Some(book.generation));
@@ -763,7 +762,7 @@ impl SyncStorage {
         if archived {
             parent = parent.join(STATISTICS_ARCHIVE);
         }
-        library::find_path(&parent, folder).unwrap_or_else(|| parent.join(folder))
+        library::folder_path(&parent, folder)
     }
 
     pub fn resolve_book_directory(folder: &str) -> PathBuf {

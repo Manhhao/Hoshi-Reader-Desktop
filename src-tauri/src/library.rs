@@ -568,6 +568,27 @@ pub(crate) fn find_path(directory: &Path, path: &str) -> Option<PathBuf> {
         })
 }
 
+pub(crate) fn local_folder_name(folder: &str) -> String {
+    if cfg!(windows) && folder.ends_with('.') {
+        format!("{folder}_")
+    } else {
+        folder.to_string()
+    }
+}
+
+pub(crate) fn folder_path(parent: &Path, folder: &str) -> PathBuf {
+    let name = local_folder_name(folder);
+    find_path(parent, &name).unwrap_or_else(|| parent.join(name))
+}
+
+pub(crate) fn folder_key(root: &Path) -> String {
+    load_metadata_at(root)
+        .map(|metadata| metadata.folder)
+        .unwrap_or_else(|| root.file_name().unwrap().to_string_lossy().into_owned())
+        .nfc()
+        .collect()
+}
+
 pub fn book_epub_path(app: &AppHandle, id: &str) -> Option<PathBuf> {
     let dir = book_dir(app, id)?;
     let metadata = load_metadata_at(&dir)?;
@@ -909,7 +930,7 @@ pub fn import_book(app: AppHandle, path: String) -> Result<BookMetadata, String>
 
     let folder = sanitize_file_name(&title);
     let root = books_dir(&app);
-    let dir = find_path(&root, &folder).unwrap_or_else(|| root.join(&folder));
+    let dir = folder_path(&root, &folder);
     if load_metadata_at(&dir).is_some_and(|existing| existing.epub.is_some()) {
         return Err(format!(
             "A book with the title \"{title}\" is already imported"
@@ -1034,7 +1055,8 @@ pub fn delete_book(app: AppHandle, id: String) -> Result<(), String> {
     crate::sync::storage::shared().prepare_book(&dir);
     crate::sync::storage::shared()
         .delete_book(&key)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    delete(&dir)
 }
 
 #[tauri::command]
@@ -1146,13 +1168,7 @@ pub(crate) fn load_shelf_list(app: &AppHandle) -> ShelfList {
     books
         .values()
         .filter(|book| book.shelves.is_some())
-        .try_for_each(|book| {
-            save_metadata(
-                book,
-                &find_path(&books_directory, &book.folder)
-                    .unwrap_or_else(|| books_directory.join(&book.folder)),
-            )
-        })
+        .try_for_each(|book| save_metadata(book, &folder_path(&books_directory, &book.folder)))
         .and_then(|_| save_shelf_list(app, &shelves))
         .ok();
     shelves
